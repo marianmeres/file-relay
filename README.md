@@ -3,6 +3,8 @@
 [![JSR](https://jsr.io/badges/@marianmeres/file-relay)](https://jsr.io/@marianmeres/file-relay)
 [![License](https://img.shields.io/npm/l/@marianmeres/file-relay)](LICENSE)
 
+> Mirror a source directory tree to a destination, transferring anything not yet transferred.
+
 CLI tool and library for transferring local files to a remote destination. Scans
 a source directory, uploads unprocessed files, and tracks successful transfers to
 prevent duplicates. Designed for cron-based offsite backup relay.
