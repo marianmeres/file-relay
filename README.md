@@ -15,11 +15,34 @@ prevent duplicates. Designed for cron-based offsite backup relay.
 # Run directly (no install needed)
 deno run -A jsr:@marianmeres/file-relay config.json
 
+# Scaffold a new relay instance interactively
+deno run -A jsr:@marianmeres/file-relay/install <dirname>
+
 # Or add to your project
 deno add jsr:@marianmeres/file-relay
 ```
 
 ## Quick Start
+
+### Scaffolding a New Instance
+
+The fastest way to set up a new relay:
+
+```bash
+deno run -A jsr:@marianmeres/file-relay/install my-backup
+```
+
+This interactively prompts for source directory and adapter type, then creates a
+ready-to-use directory with `config.json`, `deno.json`, `.env.example`, `log/`,
+and `track/`. After that:
+
+```bash
+cd my-backup
+cp .env.example .env && $EDITOR .env   # fill in credentials
+# setup cron: deno task backup
+```
+
+### Manual Setup
 
 Create a `relay-config.json`:
 

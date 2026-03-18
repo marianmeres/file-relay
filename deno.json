@@ -1,32 +1,31 @@
 {
-  "name": "@marianmeres/file-relay",
-  "version": "1.0.1",
-  "exports": {
-    ".": "./src/cli.ts",
-    "./mod": "./src/mod.ts"
-  },
-  "tasks": {
-    "example": "deno run -A --env-file=example/.env example/file-relay-example.ts",
-    "test": "deno test -A",
-    "test:watch": "deno test -A --watch",
-    "npm:build": "deno run -A scripts/build-npm.ts",
-    "npm:publish": "deno run -A scripts/build-npm.ts && cd ./.npm-dist && npm publish --access=public",
-    "release": "deno run -A jsr:@marianmeres/deno-release",
-    "publish": "deno publish && deno task npm:publish",
-    "rp": "deno task release -y && deno task publish",
-    "rpm": "deno task release minor -y && deno task publish"
-  },
-  "imports": {
-    "@marianmeres/clog": "jsr:@marianmeres/clog@^3.15.2",
-    "@marianmeres/npmbuild": "jsr:@marianmeres/npmbuild@^1.11.0",
-    "@std/assert": "jsr:@std/assert@^1.0.19",
-    "@std/fs": "jsr:@std/fs@^1.0.23",
-    "@std/path": "jsr:@std/path@^1.1.4"
-  },
-  "fmt": {
-    "useTabs": true,
-    "lineWidth": 90,
-    "indentWidth": 4,
-    "proseWrap": "preserve"
-  }
+	"name": "@marianmeres/file-relay",
+	"version": "1.0.1",
+	"exports": {
+		".": "./src/cli.ts",
+		"./mod": "./src/mod.ts",
+		"./install": "./src/install.ts"
+	},
+	"tasks": {
+		"example": "deno run -A --env-file=example/.env example/file-relay-example.ts",
+		"test": "deno test -A",
+		"test:watch": "deno test -A --watch",
+		"release": "deno run -A jsr:@marianmeres/deno-release",
+		"publish": "deno publish",
+		"rp": "deno task release -y && deno task publish",
+		"rpm": "deno task release minor -y && deno task publish"
+	},
+	"imports": {
+		"@marianmeres/clog": "jsr:@marianmeres/clog@^3.15.2",
+		"@marianmeres/npmbuild": "jsr:@marianmeres/npmbuild@^1.11.0",
+		"@std/assert": "jsr:@std/assert@^1.0.19",
+		"@std/fs": "jsr:@std/fs@^1.0.23",
+		"@std/path": "jsr:@std/path@^1.1.4"
+	},
+	"fmt": {
+		"useTabs": true,
+		"lineWidth": 90,
+		"indentWidth": 4,
+		"proseWrap": "preserve"
+	}
 }

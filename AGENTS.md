@@ -4,7 +4,7 @@
 
 ```yaml
 name: "@marianmeres/file-relay"
-version: "1.0.0"
+version: "1.0.1"
 license: "MIT"
 repository: "https://github.com/marianmeres/file-relay"
 registry_jsr: "https://jsr.io/@marianmeres/file-relay"
@@ -12,6 +12,7 @@ registry_jsr: "https://jsr.io/@marianmeres/file-relay"
 
 - **Stack**: TypeScript, Deno
 - **Run**: `deno run -A jsr:@marianmeres/file-relay <config.json>`
+- **Install**: `deno run -A jsr:@marianmeres/file-relay/install <dirname>`
 - **Test**: `deno test -A`
 - **Lint**: `deno lint`
 - **Format**: `deno fmt`
@@ -30,6 +31,7 @@ duplicates. Designed for cron-based offsite backup relay (e.g. database dumps).
 src/
   cli.ts                          # CLI entry point (default export ".")
   mod.ts                          # Programmatic API (export "./mod")
+  install.ts                      # Scaffolding CLI (export "./install")
   config.ts                       # Config types, loading, validation, env interpolation
   file-finder.ts                  # Recursive dir scan with glob/exclude filtering
   tracker.ts                      # Filesystem marker-file deduplication
@@ -95,6 +97,9 @@ config.json
 
 6. **CLI** (`cli.ts`): Thin wrapper — arg parsing, clog debug toggle, calls `relay()`.
    Exit codes: 0=success, 1=transfer failure, 2=config/fatal error.
+
+7. **Install** (`install.ts`): Scaffolding CLI. Prompts for source dir and adapter type,
+   creates a ready-to-use directory with config.json, deno.json, .env.example, log/, track/.
 
 ### Adapter Pattern
 
