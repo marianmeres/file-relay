@@ -96,12 +96,39 @@ Options:
 
 ### Source
 
-| Field            | Type       | Default  | Description                       |
-| ---------------- | ---------- | -------- | --------------------------------- |
-| `dir`            | `string`   | required | Absolute path to source directory |
-| `glob`           | `string`   | `"**/*"` | Glob pattern for file matching    |
-| `exclude`        | `string[]` | `[]`     | Glob patterns to exclude          |
-| `followSymlinks` | `boolean`  | `false`  | Whether to follow symlinks        |
+| Field            | Type       | Default  | Description                                           |
+| ---------------- | ---------- | -------- | ----------------------------------------------------- |
+| `dir`            | `string`   | required | Absolute path to source directory                     |
+| `glob`           | `string`   | `"**/*"` | Glob pattern for file matching                        |
+| `exclude`        | `string[]` | `[]`     | Glob patterns to exclude                              |
+| `match`          | `string[]` | `[]`     | Regex whitelist — path must match at least one pattern |
+| `ignore`         | `string[]` | `[]`     | Regex blacklist — matching paths are excluded          |
+| `followSymlinks` | `boolean`  | `false`  | Whether to follow symlinks                            |
+
+`match` and `ignore` use JavaScript regular expressions tested via `RegExp.test()`
+against the file's **relative path** (partial match — no anchoring unless you use
+`^`/`$`). Inline flags like `(?i)` are supported for case-insensitive matching.
+
+When both glob and regex filters are configured, the filtering pipeline is:
+`glob` → `exclude` → `match` → `ignore`.
+
+> **Note:** Since patterns are stored in JSON, backslashes must be doubled
+> (e.g., `"\\.sql\\.gz$"` to match the literal `.sql.gz` suffix).
+
+**Example** — relay only files from paths containing "daily" or "weekly", but skip
+anything ending in `-latest.sql.gz`:
+
+```json
+{
+	"source": {
+		"dir": "/data/backups",
+		"glob": "**/*.sql.gz",
+		"exclude": ["**/*-latest.sql.gz"],
+		"match": ["daily", "weekly"],
+		"ignore": ["-latest\\.sql\\.gz$"]
+	}
+}
+```
 
 ### Destination: `static-upload-server`
 
@@ -159,7 +186,7 @@ and the programmatic API. Console output continues normally via `@marianmeres/cl
 
 ## How It Works
 
-1. **Scan** -- Recursively walk source directory, match files by glob, exclude patterns
+1. **Scan** -- Recursively walk source directory, filter by glob and regex patterns
 2. **Filter** -- Skip files already marked as transferred (via filesystem marker files)
 3. **Transfer** -- Upload/copy each file using the configured adapter
 4. **Track** -- Write a `.transferred.json` marker for each successful transfer

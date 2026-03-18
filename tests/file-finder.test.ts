@@ -219,3 +219,130 @@ Deno.test("file-finder - FileInfo has correct properties", async () => {
 		await cleanup(dir);
 	}
 });
+
+// ---------------------------------------------------------------------------
+// match (regex whitelist) and ignore (regex blacklist)
+// ---------------------------------------------------------------------------
+
+Deno.test("file-finder - match filters to only matching paths", async () => {
+	const dir = await createTempDir();
+	try {
+		await createFile(dir, "project-a/backup.sql.gz", "a");
+		await createFile(dir, "project-b/backup.sql.gz", "b");
+		await createFile(dir, "project-a/logs.txt", "c");
+
+		const files = await findFiles({
+			dir,
+			glob: "**/*",
+			match: ["project-a"],
+		});
+
+		assertEquals(files.length, 2);
+		assertEquals(
+			files.every((f) => f.relativePath.includes("project-a")),
+			true,
+		);
+	} finally {
+		await cleanup(dir);
+	}
+});
+
+Deno.test("file-finder - ignore excludes matching paths", async () => {
+	const dir = await createTempDir();
+	try {
+		await createFile(dir, "data.sql.gz", "a");
+		await createFile(dir, "data.tmp", "b");
+		await createFile(dir, "sub/notes.tmp", "c");
+
+		const files = await findFiles({
+			dir,
+			glob: "**/*",
+			ignore: ["\\.tmp$"],
+		});
+
+		assertEquals(files.length, 1);
+		assertEquals(files[0].name, "data.sql.gz");
+	} finally {
+		await cleanup(dir);
+	}
+});
+
+Deno.test("file-finder - match with multiple patterns uses OR logic", async () => {
+	const dir = await createTempDir();
+	try {
+		await createFile(dir, "daily/backup.gz", "d");
+		await createFile(dir, "weekly/backup.gz", "w");
+		await createFile(dir, "monthly/backup.gz", "m");
+
+		const files = await findFiles({
+			dir,
+			glob: "**/*",
+			match: ["^daily", "^weekly"],
+		});
+
+		assertEquals(files.length, 2);
+		const relPaths = files.map((f) => f.relativePath).sort();
+		assertEquals(relPaths, ["daily/backup.gz", "weekly/backup.gz"]);
+	} finally {
+		await cleanup(dir);
+	}
+});
+
+Deno.test("file-finder - match and ignore combined", async () => {
+	const dir = await createTempDir();
+	try {
+		await createFile(dir, "proj/real.sql.gz", "a");
+		await createFile(dir, "proj/latest.sql.gz", "b");
+		await createFile(dir, "other/real.sql.gz", "c");
+
+		const files = await findFiles({
+			dir,
+			glob: "**/*",
+			match: ["proj"],
+			ignore: ["latest"],
+		});
+
+		assertEquals(files.length, 1);
+		assertEquals(files[0].relativePath, "proj/real.sql.gz");
+	} finally {
+		await cleanup(dir);
+	}
+});
+
+Deno.test("file-finder - match and ignore work alongside glob and exclude", async () => {
+	const dir = await createTempDir();
+	try {
+		await createFile(dir, "daily/backup.sql.gz", "a");
+		await createFile(dir, "daily/notes.txt", "b");
+		await createFile(dir, "weekly/backup.sql.gz", "c");
+
+		const files = await findFiles({
+			dir,
+			glob: "**/*.sql.gz",
+			match: ["daily"],
+		});
+
+		assertEquals(files.length, 1);
+		assertEquals(files[0].relativePath, "daily/backup.sql.gz");
+	} finally {
+		await cleanup(dir);
+	}
+});
+
+Deno.test("file-finder - empty match array means no regex include filtering", async () => {
+	const dir = await createTempDir();
+	try {
+		await createFile(dir, "a.txt", "a");
+		await createFile(dir, "b.txt", "b");
+
+		const files = await findFiles({
+			dir,
+			glob: "**/*",
+			match: [],
+		});
+
+		assertEquals(files.length, 2);
+	} finally {
+		await cleanup(dir);
+	}
+});

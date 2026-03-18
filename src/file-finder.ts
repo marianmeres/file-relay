@@ -57,6 +57,10 @@ export async function findFiles(source: SourceConfig): Promise<FileInfo[]> {
 		globToRegExp(p, { extended: true, globstar: true })
 	);
 
+	// Regex-based filters (partial match via RegExp.test)
+	const matchRes = (source.match ?? []).map((p) => new RegExp(p));
+	const ignoreRes = (source.ignore ?? []).map((p) => new RegExp(p));
+
 	const files: FileInfo[] = [];
 
 	for await (const entry of walkDir(source.dir, followSymlinks)) {
@@ -67,6 +71,14 @@ export async function findFiles(source: SourceConfig): Promise<FileInfo[]> {
 
 		// must not match any exclude glob
 		if (excludeRes.some((re) => re.test(rel))) continue;
+
+		// must match at least one regex include pattern (if any specified)
+		if (matchRes.length > 0 && !matchRes.some((re) => re.test(rel))) {
+			continue;
+		}
+
+		// must not match any regex exclude pattern
+		if (ignoreRes.some((re) => re.test(rel))) continue;
 
 		try {
 			const stat = await Deno.stat(entry.path);

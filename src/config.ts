@@ -12,6 +12,21 @@ export interface SourceConfig {
 	glob?: string;
 	/** Glob patterns to exclude (matched against relative path). */
 	exclude?: string[];
+	/**
+	 * Regex patterns for path inclusion (whitelist). If non-empty, a file's
+	 * relative path must match at least one pattern to be included.
+	 * Uses `RegExp.test()` (partial match — no anchoring unless you use `^`/`$`).
+	 * Supports inline flags, e.g. `"(?i)foo"` for case-insensitive matching.
+	 * @example ["foo", "^daily/"]
+	 */
+	match?: string[];
+	/**
+	 * Regex patterns for path exclusion (blacklist). A file whose relative path
+	 * matches any pattern will be excluded.
+	 * Uses `RegExp.test()` (partial match — no anchoring unless you use `^`/`$`).
+	 * @example ["-latest\\.sql\\.gz$", "(?i)\\.tmp$"]
+	 */
+	ignore?: string[];
 	/** Whether to follow symlinks. Default: `false` */
 	followSymlinks?: boolean;
 }
@@ -106,10 +121,7 @@ function resolvePath(val: string, baseDir?: string): string {
 	return resolve(val);
 }
 
-function validateSource(
-	raw: unknown,
-	baseDir?: string,
-): SourceConfig {
+function validateSource(raw: unknown, baseDir?: string): SourceConfig {
 	if (!raw || typeof raw !== "object") {
 		throw new Error(`"source" must be an object`);
 	}
@@ -126,9 +138,30 @@ function validateSource(
 		}
 		for (const e of s.exclude) {
 			if (typeof e !== "string") {
-				throw new Error(
-					`"source.exclude" entries must be strings`,
-				);
+				throw new Error(`"source.exclude" entries must be strings`);
+			}
+		}
+	}
+	for (const field of ["match", "ignore"] as const) {
+		if (s[field] !== undefined) {
+			if (!Array.isArray(s[field])) {
+				throw new Error(`"source.${field}" must be an array`);
+			}
+			for (const pattern of s[field]) {
+				if (typeof pattern !== "string") {
+					throw new Error(
+						`"source.${field}" entries must be strings`,
+					);
+				}
+				try {
+					new RegExp(pattern);
+				} catch (e) {
+					throw new Error(
+						`"source.${field}" contains invalid regex "${pattern}": ${
+							(e as Error).message
+						}`,
+					);
+				}
 			}
 		}
 	}
@@ -143,6 +176,8 @@ function validateSource(
 		dir: resolvePath(s.dir as string, baseDir),
 		glob: (s.glob as string) ?? "**/*",
 		exclude: (s.exclude as string[]) ?? [],
+		match: (s.match as string[]) ?? [],
+		ignore: (s.ignore as string[]) ?? [],
 		followSymlinks: (s.followSymlinks as boolean) ?? false,
 	};
 }

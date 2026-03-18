@@ -227,6 +227,90 @@ Deno.test("config - loadConfig rejects missing env var", async () => {
 	}
 });
 
+Deno.test("config - validates match and ignore arrays", () => {
+	const config = validateConfig({
+		logDir: "/tmp/logs",
+		trackDir: "/tmp/track",
+		source: {
+			dir: "/data/backups",
+			match: ["^daily/", "weekly"],
+			ignore: ["\\.tmp$"],
+		},
+		destination: { adapter: "filesystem", dir: "/mnt" },
+	});
+
+	assertEquals(config.source.match, ["^daily/", "weekly"]);
+	assertEquals(config.source.ignore, ["\\.tmp$"]);
+});
+
+Deno.test("config - defaults match and ignore to empty arrays", () => {
+	const config = validateConfig({
+		logDir: "/tmp/logs",
+		trackDir: "/tmp/track",
+		source: { dir: "/data" },
+		destination: { adapter: "filesystem", dir: "/mnt" },
+	});
+
+	assertEquals(config.source.match, []);
+	assertEquals(config.source.ignore, []);
+});
+
+Deno.test("config - rejects non-array match", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data", match: "not-array" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+			}),
+		Error,
+		'"source.match" must be an array',
+	);
+});
+
+Deno.test("config - rejects non-string entries in ignore", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data", ignore: [123] },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+			}),
+		Error,
+		'"source.ignore" entries must be strings',
+	);
+});
+
+Deno.test("config - rejects invalid regex in match", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data", match: ["[invalid"] },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+			}),
+		Error,
+		"invalid regex",
+	);
+});
+
+Deno.test("config - rejects invalid regex in ignore", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data", ignore: ["(unclosed"] },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+			}),
+		Error,
+		"invalid regex",
+	);
+});
+
 Deno.test("config - loadConfig rejects invalid JSON", async () => {
 	const tmpDir = await createTempDir();
 	try {

@@ -33,7 +33,7 @@ src/
   mod.ts                          # Programmatic API (export "./mod")
   install.ts                      # Scaffolding CLI (export "./install")
   config.ts                       # Config types, loading, validation, env interpolation
-  file-finder.ts                  # Recursive dir scan with glob/exclude filtering
+  file-finder.ts                  # Recursive dir scan with glob/exclude + regex match/ignore filtering
   tracker.ts                      # Filesystem marker-file deduplication
   relay.ts                        # Main orchestrator + log file writer
   adapters/
@@ -68,7 +68,7 @@ config.json
   -> loadConfig() [parse, interpolate ${ENV_VARs}, validate]
   -> relay()
        -> _initLogFileWriter() [create timestamped log file in logDir]
-       -> findFiles() [recursive walk, glob match, exclude filter, sort by mtime]
+       -> findFiles() [recursive walk, glob match, exclude, regex match/ignore, sort by mtime]
        -> tracker.isTransferred() [check marker file existence]
        -> adapter.transfer() [HTTP POST or filesystem copy]
        -> tracker.markTransferred() [write marker JSON]
@@ -79,10 +79,13 @@ config.json
 ### Core Components
 
 1. **Config** (`config.ts`): JSON config with `${ENV_VAR}` interpolation. Validates
-   source (dir, glob, exclude, followSymlinks) and destination (adapter discriminated union).
+   source (dir, glob, exclude, match, ignore, followSymlinks) and destination (adapter
+   discriminated union). `match`/`ignore` entries are validated as compilable regexes.
 
 2. **File Finder** (`file-finder.ts`): Recursive directory walker. Glob include/exclude
-   via `@std/path/glob-to-regexp`. Symlink-aware. Returns `FileInfo[]` sorted by mtime desc.
+   via `@std/path/glob-to-regexp`, then regex whitelist (`match`) / blacklist (`ignore`)
+   via `RegExp.test()` on relative paths. Symlink-aware. Returns `FileInfo[]` sorted by mtime desc.
+   Filter pipeline: glob → exclude → match → ignore.
 
 3. **Tracker** (`tracker.ts`): Dedup via `{trackDir}/{relativePath}.transferred.json`
    marker files. Atomic writes (temp + rename). Check = stat existence.

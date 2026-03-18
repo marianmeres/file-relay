@@ -70,6 +70,8 @@ const files = await findFiles({
 	dir: "/data/backups",
 	glob: "**/*.sql.gz",
 	exclude: ["**/*-latest.sql.gz"],
+	match: ["daily", "weekly"], // regex whitelist (OR logic)
+	ignore: ["\\.tmp$"], // regex blacklist
 });
 // files[0] is the most recently modified
 ```
@@ -177,7 +179,9 @@ interface FileRelayConfig {
 interface SourceConfig {
 	dir: string; // Base directory (absolute)
 	glob?: string; // Glob pattern. Default: "**/*"
-	exclude?: string[]; // Exclusion patterns. Default: []
+	exclude?: string[]; // Glob exclusion patterns. Default: []
+	match?: string[]; // Regex whitelist (partial match). Default: []
+	ignore?: string[]; // Regex blacklist (partial match). Default: []
 	followSymlinks?: boolean; // Default: false
 }
 ```
