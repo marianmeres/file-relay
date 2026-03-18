@@ -2,7 +2,9 @@ import { createClog } from "@marianmeres/clog";
 import { loadConfig } from "./config.ts";
 import { relay } from "./relay.ts";
 
-const VERSION = "1.0.0";
+import denoJson from "../deno.json" with { type: "json" };
+
+const VERSION = denoJson.version;
 
 function printHelp() {
 	console.log(`
