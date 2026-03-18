@@ -1,0 +1,13 @@
+{
+	"logDir": "./log",
+	"trackDir": "./track",
+	"source": {
+		"dir": "./source",
+		"glob": "**/*"
+	},
+	"destination": {
+		"adapter": "static-upload-server",
+		"url": "${STATIC_UPLOAD_SERVER_URL}",
+		"token": "${STATIC_UPLOAD_SERVER_TOKEN}"
+	}
+}

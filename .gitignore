@@ -1,0 +1,14 @@
+node_modules/
+.idea
+.DS_Store
+.npm-dist
+tmp/*
+
+example/.env
+example/source/
+example/log/
+example/track/
+
+example2/.env
+example2/log/*
+example2/track/*
