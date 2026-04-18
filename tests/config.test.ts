@@ -311,6 +311,109 @@ Deno.test("config - rejects invalid regex in ignore", () => {
 	);
 });
 
+Deno.test("config - trailing slash on absolute path does not re-join baseDir", () => {
+	const config = validateConfig(
+		{
+			logDir: "/tmp/logs/",
+			trackDir: "/tmp/track/",
+			source: { dir: "/data/backups/" },
+			destination: { adapter: "filesystem", dir: "/mnt/dest/" },
+		},
+		"/base/dir",
+	);
+
+	assertEquals(config.logDir, "/tmp/logs");
+	assertEquals(config.trackDir, "/tmp/track");
+	assertEquals(config.source.dir, "/data/backups");
+	assertEquals(
+		(config.destination as { dir: string }).dir,
+		"/mnt/dest",
+	);
+});
+
+Deno.test("config - validates transfer.concurrency and retry", () => {
+	const config = validateConfig({
+		logDir: "/tmp/logs",
+		trackDir: "/tmp/track",
+		source: { dir: "/data" },
+		destination: { adapter: "filesystem", dir: "/mnt" },
+		transfer: {
+			concurrency: 4,
+			retry: { attempts: 3, backoffMs: 500, maxBackoffMs: 10_000 },
+		},
+	});
+
+	assertEquals(config.transfer?.concurrency, 4);
+	assertEquals(config.transfer?.retry?.attempts, 3);
+	assertEquals(config.transfer?.retry?.backoffMs, 500);
+	assertEquals(config.transfer?.retry?.maxBackoffMs, 10_000);
+});
+
+Deno.test("config - rejects non-positive concurrency", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				transfer: { concurrency: 0 },
+			}),
+		Error,
+		"concurrency",
+	);
+});
+
+Deno.test("config - rejects invalid retry attempts", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				transfer: { retry: { attempts: 0 } },
+			}),
+		Error,
+		"attempts",
+	);
+});
+
+Deno.test("config - validates filesystem verify mode", () => {
+	const config = validateConfig({
+		logDir: "/tmp/logs",
+		trackDir: "/tmp/track",
+		source: { dir: "/data" },
+		destination: {
+			adapter: "filesystem",
+			dir: "/mnt",
+			verify: "sha256",
+		},
+	});
+	assertEquals(
+		(config.destination as { verify: string }).verify,
+		"sha256",
+	);
+});
+
+Deno.test("config - rejects unknown verify mode", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: {
+					adapter: "filesystem",
+					dir: "/mnt",
+					verify: "md5",
+				},
+			}),
+		Error,
+		"verify",
+	);
+});
+
 Deno.test("config - loadConfig rejects invalid JSON", async () => {
 	const tmpDir = await createTempDir();
 	try {

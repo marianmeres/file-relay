@@ -1,1 +1,4 @@
-Deno/TypeScript CLI tool and library for relaying (transferring) local files to a remote destination via HTTP upload or filesystem copy, with glob/regex filtering, deduplication via marker files, and environment variable interpolation in config. Designed for cron-based offsite backup relay scenarios.
+Deno/TypeScript CLI tool and library for relaying (transferring) local files to a remote 
+destination via HTTP upload or filesystem copy, with glob/regex filtering, deduplication 
+via marker files, and environment variable interpolation in config. Designed for cron-based 
+offsite backup relay scenarios.

@@ -17,6 +17,22 @@ export interface TransferResult {
 	bytesTransferred?: number;
 	/** Transfer duration in milliseconds. */
 	durationMs?: number;
+	/** Number of attempts made (>=1). Only set when retries were requested. */
+	attempts?: number;
+}
+
+/** Options passed to {@linkcode RelayAdapter.transfer}. */
+export interface TransferOptions {
+	/** Abort the in-flight transfer. */
+	signal?: AbortSignal;
+}
+
+/** Result of an adapter preflight check. */
+export interface CheckResult {
+	/** Whether the destination looks ready to accept transfers. */
+	ok: boolean;
+	/** Error message when `ok` is false. */
+	error?: string;
 }
 
 /** Interface for file transfer adapters. */
@@ -24,7 +40,13 @@ export interface RelayAdapter {
 	/** Human-readable adapter name (e.g. `"filesystem"`, `"static-upload-server"`). */
 	readonly name: string;
 	/** Transfer a single file to the destination. */
-	transfer(file: FileInfo): Promise<TransferResult>;
+	transfer(file: FileInfo, options?: TransferOptions): Promise<TransferResult>;
+	/**
+	 * Optional preflight. Called once before any transfers to verify the
+	 * destination is reachable / writable. If it fails, the whole run is
+	 * aborted without attempting any transfer.
+	 */
+	check?(): Promise<CheckResult>;
 }
 
 /**

@@ -329,6 +329,32 @@ Deno.test("file-finder - match and ignore work alongside glob and exclude", asyn
 	}
 });
 
+Deno.test("file-finder - terminates on symlink cycles when following", async () => {
+	const dir = await createTempDir();
+	try {
+		await createFile(dir, "real.sql.gz", "data");
+		// create a cycle: a directory that symlinks to its parent
+		await Deno.mkdir(`${dir}/sub`);
+		await Deno.symlink(dir, `${dir}/sub/loop`);
+
+		const files = await findFiles({
+			dir,
+			glob: "**/*.sql.gz",
+			followSymlinks: true,
+		});
+
+		// must not hang / stack-overflow; we just care that it returned
+		// and that real.sql.gz is present (possibly multiple times via
+		// the symlink — ok as long as it terminates)
+		assertEquals(
+			files.some((f) => f.relativePath === "real.sql.gz"),
+			true,
+		);
+	} finally {
+		await cleanup(dir);
+	}
+});
+
 Deno.test("file-finder - empty match array means no regex include filtering", async () => {
 	const dir = await createTempDir();
 	try {

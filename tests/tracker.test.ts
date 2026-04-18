@@ -88,6 +88,60 @@ Deno.test("tracker - creates subdirectory structure automatically", async () => 
 	}
 });
 
+Deno.test("tracker - sweepTmp removes stale .tmp markers", async () => {
+	const dir = await createTempDir();
+	try {
+		const tracker = createTracker(dir);
+
+		// write a valid marker
+		await tracker.markTransferred("keep/file.gz", {
+			transferredAt: new Date().toISOString(),
+			sourcePath: "/src/keep/file.gz",
+			sourceSize: 10,
+			destinationInfo: "x",
+		});
+
+		// plant a stale .tmp marker
+		const { ensureDir } = await import("@std/fs");
+		await ensureDir(join(dir, "stale"));
+		await Deno.writeTextFile(
+			join(dir, "stale/file.gz.transferred.json.tmp"),
+			"{}",
+		);
+		await Deno.writeTextFile(
+			join(dir, "keep/file.gz.transferred.json.tmp"),
+			"{}",
+		);
+
+		const removed = await tracker.sweepTmp();
+		assertEquals(removed, 2);
+
+		// valid marker should still exist
+		const stat = await Deno.stat(
+			join(dir, "keep/file.gz.transferred.json"),
+		);
+		assertEquals(stat.isFile, true);
+
+		// stale .tmp files should be gone
+		let stillExists = false;
+		try {
+			await Deno.stat(join(dir, "stale/file.gz.transferred.json.tmp"));
+			stillExists = true;
+		} catch {
+			// expected
+		}
+		assertEquals(stillExists, false);
+	} finally {
+		await cleanup(dir);
+	}
+});
+
+Deno.test("tracker - sweepTmp tolerates missing trackDir", async () => {
+	const tracker = createTracker("/nonexistent/path/for/sweep");
+	const removed = await tracker.sweepTmp();
+	assertEquals(removed, 0);
+});
+
 Deno.test("tracker - different relative paths tracked independently", async () => {
 	const dir = await createTempDir();
 	try {

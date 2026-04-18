@@ -1,4 +1,4 @@
-import { relative } from "@std/path";
+import { isAbsolute, join, relative } from "@std/path";
 import { globToRegExp } from "@std/path/glob-to-regexp";
 import type { SourceConfig } from "./config.ts";
 
@@ -16,25 +16,40 @@ export interface FileInfo {
 	mtime: Date;
 }
 
-/** Recursively walk a directory yielding file entries. */
+/**
+ * Recursively walk a directory yielding file entries. When `followSymlinks`
+ * is enabled, already-visited real paths are tracked to prevent infinite
+ * recursion on cyclic symlinks.
+ */
 async function* walkDir(
 	dir: string,
 	followSymlinks: boolean,
+	visited: Set<string>,
 ): AsyncGenerator<{ path: string; name: string }> {
+	if (followSymlinks) {
+		let real: string;
+		try {
+			real = await Deno.realPath(dir);
+		} catch {
+			return;
+		}
+		if (visited.has(real)) return;
+		visited.add(real);
+	}
+
 	for await (const entry of Deno.readDir(dir)) {
-		const fullPath = `${dir}/${entry.name}`;
+		const fullPath = join(dir, entry.name);
 		if (entry.isDirectory) {
-			yield* walkDir(fullPath, followSymlinks);
+			yield* walkDir(fullPath, followSymlinks, visited);
 		} else if (entry.isFile) {
 			yield { path: fullPath, name: entry.name };
 		} else if (entry.isSymlink && followSymlinks) {
-			// resolve symlink and check if it's a file or directory
 			try {
 				const info = await Deno.stat(fullPath);
 				if (info.isFile) {
 					yield { path: fullPath, name: entry.name };
 				} else if (info.isDirectory) {
-					yield* walkDir(fullPath, followSymlinks);
+					yield* walkDir(fullPath, followSymlinks, visited);
 				}
 			} catch {
 				// broken symlink — skip silently
@@ -63,8 +78,13 @@ export async function findFiles(source: SourceConfig): Promise<FileInfo[]> {
 
 	const files: FileInfo[] = [];
 
-	for await (const entry of walkDir(source.dir, followSymlinks)) {
+	for await (const entry of walkDir(source.dir, followSymlinks, new Set())) {
 		const rel = relative(source.dir, entry.path);
+
+		// safety: relative path must stay within source.dir
+		// (can only happen today via a symlink pointing outside source.dir
+		// when followSymlinks is true)
+		if (isAbsolute(rel) || rel.startsWith("..")) continue;
 
 		// must match the include glob
 		if (!includeRe.test(rel)) continue;

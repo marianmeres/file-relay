@@ -86,24 +86,35 @@ Set up as a cron job:
 deno run -A jsr:@marianmeres/file-relay <config.json> [options]
 
 Options:
-  --dry-run       Find and report files without transferring
-  --verbose       Enable debug-level log output
-  --help          Show help message
-  --version       Show version
+  --dry-run                Find and report files without transferring
+  --verbose                Enable debug-level log output
+  --concurrency=N          Override config.transfer.concurrency
+  --retry-attempts=N       Override config.transfer.retry.attempts
+  --help                   Show help message
+  --version                Show version
 ```
+
+The process exits with:
+
+| Code  | Meaning                                                   |
+| ----- | --------------------------------------------------------- |
+| `0`   | Every attempted transfer succeeded (or nothing to do)     |
+| `1`   | At least one transfer failed, or adapter preflight failed |
+| `2`   | Config/usage error, or fatal error before transfer        |
+| `130` | Run was aborted via SIGINT/SIGTERM                        |
 
 ## Configuration
 
 ### Source
 
-| Field            | Type       | Default  | Description                                           |
-| ---------------- | ---------- | -------- | ----------------------------------------------------- |
-| `dir`            | `string`   | required | Absolute path to source directory                     |
-| `glob`           | `string`   | `"**/*"` | Glob pattern for file matching                        |
-| `exclude`        | `string[]` | `[]`     | Glob patterns to exclude                              |
+| Field            | Type       | Default  | Description                                            |
+| ---------------- | ---------- | -------- | ------------------------------------------------------ |
+| `dir`            | `string`   | required | Absolute path to source directory                      |
+| `glob`           | `string`   | `"**/*"` | Glob pattern for file matching                         |
+| `exclude`        | `string[]` | `[]`     | Glob patterns to exclude                               |
 | `match`          | `string[]` | `[]`     | Regex whitelist — path must match at least one pattern |
 | `ignore`         | `string[]` | `[]`     | Regex blacklist — matching paths are excluded          |
-| `followSymlinks` | `boolean`  | `false`  | Whether to follow symlinks                            |
+| `followSymlinks` | `boolean`  | `false`  | Whether to follow symlinks                             |
 
 `match` and `ignore` use JavaScript regular expressions tested via `RegExp.test()`
 against the file's **relative path** (partial match — no anchoring unless you use
@@ -146,10 +157,37 @@ Uploads via HTTP POST (multipart/form-data) to a
 
 Copies files to a local or mounted directory.
 
-| Field     | Type           | Default  | Description                       |
-| --------- | -------------- | -------- | --------------------------------- |
-| `adapter` | `"filesystem"` | required | Adapter type                      |
-| `dir`     | `string`       | required | Absolute path to target directory |
+| Field     | Type                 | Default  | Description                             |
+| --------- | -------------------- | -------- | --------------------------------------- |
+| `adapter` | `"filesystem"`       | required | Adapter type                            |
+| `dir`     | `string`             | required | Absolute path to target directory       |
+| `verify`  | `"size" \| "sha256"` | `"size"` | Post-copy verification mode (see below) |
+
+`verify: "size"` (the default) compares the copied file's byte size against
+the source — fast, catches truncation. `verify: "sha256"` additionally hashes
+both files and compares digests, catching silent corruption. The SHA-256 path
+buffers the file in memory (WebCrypto has no streaming digest); use it when
+correctness matters more than throughput.
+
+### Transfer (optional)
+
+Top-level `transfer` object controls retry and concurrency for all adapters:
+
+| Field                | Type     | Default | Description                                            |
+| -------------------- | -------- | ------- | ------------------------------------------------------ |
+| `concurrency`        | `number` | `1`     | Max files transferred in parallel                      |
+| `retry.attempts`     | `number` | `1`     | Total attempts per file (including the first)          |
+| `retry.backoffMs`    | `number` | `1000`  | Initial backoff between retries (doubles each attempt) |
+| `retry.maxBackoffMs` | `number` | `30000` | Cap on the computed backoff delay                      |
+
+```json
+{
+	"transfer": {
+		"concurrency": 4,
+		"retry": { "attempts": 3, "backoffMs": 1000 }
+	}
+}
+```
 
 ### Environment Variable Interpolation
 
@@ -169,14 +207,39 @@ String values in config support `${ENV_VAR}` syntax, resolved at load time:
 import { loadConfig, relay } from "@marianmeres/file-relay/mod";
 
 const config = await loadConfig("./relay-config.json");
-const result = await relay(config, { dryRun: false });
 
-if (result.success) {
-	console.log(`Transferred ${result.transfers.length} file(s)`);
-} else {
-	console.error("Some transfers failed");
+// Optional AbortSignal — in-flight transfers honour it.
+const controller = new AbortController();
+
+const result = await relay(config, {
+	dryRun: false,
+	signal: controller.signal,
+});
+
+switch (result.status) {
+	case "ok":
+		console.log(`Transferred ${result.transfers.length} file(s)`);
+		break;
+	case "idle":
+		console.log("Nothing to do");
+		break;
+	case "partial":
+		console.warn(`Some transfers failed`);
+		break;
+	case "failed":
+		console.error("All transfers failed");
+		break;
+	case "preflight-failed":
+		console.error("Destination is not reachable");
+		break;
+	case "aborted":
+		console.warn("Aborted by caller");
+		break;
 }
 ```
+
+Files are streamed to the destination — `file-relay` does not buffer the
+entire file in memory, so multi-gigabyte backups are safe on modest hardware.
 
 ## Logging
 
@@ -209,6 +272,41 @@ deno task example
 ## API
 
 See [API.md](API.md) for complete API documentation.
+
+## Upgrading to 1.3
+
+Mostly additive, but a few edge-case behaviours changed. **Nothing that was
+previously valid stops working** — but the following are worth being aware of:
+
+- **HTTP uploads are now streamed.** Pre-1.3 loaded the entire file into memory
+  via `Deno.readFile()`. 1.3 streams the multipart body directly from disk.
+  Memory footprint is now constant regardless of file size. No config change
+  needed. The `Content-Length` header is now always set (it wasn't before).
+- **Adapters run a preflight check before any transfer.** If the destination
+  is unreachable/unwritable, the run now fails fast with
+  `status: "preflight-failed"` instead of attempting each file and recording
+  N per-file errors. Net behavioural change: `transfers` in the result is
+  empty in this case (was N-long before). Exit code is still non-zero.
+- **`RelayRunResult.status`** — new field with `"ok" | "partial" | "failed" |
+  "idle" | "aborted" | "preflight-failed"`. The boolean `success` is still
+  set for backwards compatibility and still means "no transfer failed".
+  A `"preflight-failed"` run reports `success: false`.
+- **Absolute paths with trailing slashes** (`/tmp/logs/`) used to be silently
+  re-rooted under `baseDir` when `loadConfig` was called from a different
+  directory. They now resolve correctly (`/tmp/logs`). If you were relying on
+  the buggy behaviour, use explicitly relative paths instead.
+- **`createClog.global.hook` is no longer clobbered.** Pre-1.3 `relay()`
+  replaced the global hook while running so per-run log files captured
+  output. It still does that, but the replacement is now reentrancy-safe and
+  restored on finish. Two `relay()` calls running in parallel in the same
+  process no longer corrupt each other's log files. If your code explicitly
+  read `createClog.global.hook` while a relay was running, you'd still
+  observe a temporary replacement — that's intentional.
+- **Symlink cycles no longer hang.** With `followSymlinks: true`, cyclic
+  symlinks are now detected via a visited-realpath set instead of recursing
+  forever.
+
+No new Deno permissions are required.
 
 ## License
 

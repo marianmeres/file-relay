@@ -1,26 +1,41 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@marianmeres/clog@^3.15.2": "3.15.2",
-    "jsr:@marianmeres/npmbuild@^1.11.0": "1.11.0",
+    "jsr:@marianmeres/batch@^1.2.0": "1.2.0",
+    "jsr:@marianmeres/clog@^3.15.3": "3.17.0",
+    "jsr:@marianmeres/clog@^3.17.0": "3.17.0",
+    "jsr:@marianmeres/npmbuild@^1.12.0": "1.12.0",
+    "jsr:@marianmeres/pubsub@^2.4.6": "2.4.6",
     "jsr:@std/assert@^1.0.19": "1.0.19",
-    "jsr:@std/collections@^1.1.5": "1.1.6",
-    "jsr:@std/fs@^1.0.22": "1.0.23",
+    "jsr:@std/collections@^1.1.6": "1.1.6",
     "jsr:@std/fs@^1.0.23": "1.0.23",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.1.4": "1.1.4"
   },
   "jsr": {
-    "@marianmeres/clog@3.15.2": {
-      "integrity": "c9f35639efed3aacf28d7f1a0c3b0cfb23420a6ece0e830742e56c3e87c48562"
+    "@marianmeres/batch@1.2.0": {
+      "integrity": "7cafd9be55f1f0a1a9f7aaab205c7d2804d1a904bbcc33528e2fda74020d5ceb",
+      "dependencies": [
+        "jsr:@marianmeres/clog@^3.15.3",
+        "jsr:@marianmeres/pubsub"
+      ]
     },
-    "@marianmeres/npmbuild@1.11.0": {
-      "integrity": "924ed6df296aa4e3ffd55ad2c4b7904663824c5c30866c0c47fa815fd2c1a7d8",
+    "@marianmeres/clog@3.17.0": {
+      "integrity": "c8cc70dd07e7de851fc41f92563ddc4e55c10c34bc3b42351df5ed14908ac8cd",
+      "dependencies": [
+        "jsr:@marianmeres/batch"
+      ]
+    },
+    "@marianmeres/npmbuild@1.12.0": {
+      "integrity": "17561243fdd772580a3bcc46d79c37f2d99af4146d3261a716a4180560c12e6e",
       "dependencies": [
         "jsr:@std/collections",
-        "jsr:@std/fs@^1.0.22",
+        "jsr:@std/fs",
         "jsr:@std/path"
       ]
+    },
+    "@marianmeres/pubsub@2.4.6": {
+      "integrity": "949fc1f5e39a84642f5943dccb94fe14c58bfffa48649e8401f3d0607a7f2159"
     },
     "@std/assert@1.0.19": {
       "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
@@ -50,8 +65,8 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@marianmeres/clog@^3.15.2",
-      "jsr:@marianmeres/npmbuild@^1.11.0",
+      "jsr:@marianmeres/clog@^3.17.0",
+      "jsr:@marianmeres/npmbuild@^1.12.0",
       "jsr:@std/assert@^1.0.19",
       "jsr:@std/fs@^1.0.23",
       "jsr:@std/path@^1.1.4"

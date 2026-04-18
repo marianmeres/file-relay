@@ -1,4 +1,4 @@
-import { dirname, resolve } from "@std/path";
+import { dirname, isAbsolute, resolve } from "@std/path";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -49,12 +49,39 @@ export interface FilesystemCopyDestination {
 	adapter: "filesystem";
 	/** Target directory. Must be absolute. */
 	dir: string;
+	/**
+	 * Post-copy verification mode. Default: `"size"` (compares byte size — fast,
+	 * catches truncation). Use `"sha256"` to additionally compare SHA-256 of
+	 * source and destination (slower, catches silent corruption).
+	 */
+	verify?: "size" | "sha256";
 }
 
 /** Union of all supported destination configurations. Discriminated by `adapter` field. */
 export type DestinationConfig =
 	| StaticUploadServerDestination
 	| FilesystemCopyDestination;
+
+/** Retry policy for transient transfer failures. */
+export interface RetryConfig {
+	/** Total attempts (including the initial one). Default: `1` (no retry). */
+	attempts?: number;
+	/** Initial backoff delay in ms. Doubled between attempts. Default: `1000` */
+	backoffMs?: number;
+	/** Maximum backoff delay in ms. Default: `30000` */
+	maxBackoffMs?: number;
+}
+
+/** Transfer behaviour (concurrency, retries). Applies across all adapters. */
+export interface TransferConfig {
+	/**
+	 * Maximum number of files transferred concurrently. Default: `1`
+	 * (sequential — preserves the pre-1.3 behaviour).
+	 */
+	concurrency?: number;
+	/** Retry policy for failing transfers. Default: no retry. */
+	retry?: RetryConfig;
+}
 
 /** Top-level configuration for a file-relay run. */
 export interface FileRelayConfig {
@@ -66,6 +93,8 @@ export interface FileRelayConfig {
 	source: SourceConfig;
 	/** Destination/transfer configuration. */
 	destination: DestinationConfig;
+	/** Optional transfer-level settings (concurrency, retry). */
+	transfer?: TransferConfig;
 }
 
 // -----------------------------------------------------------------------------
@@ -115,10 +144,8 @@ function assertNonEmptyString(
 }
 
 function resolvePath(val: string, baseDir?: string): string {
-	if (baseDir && val !== resolve(val)) {
-		return resolve(baseDir, val);
-	}
-	return resolve(val);
+	if (isAbsolute(val)) return resolve(val);
+	return resolve(baseDir ?? Deno.cwd(), val);
 }
 
 function validateSource(raw: unknown, baseDir?: string): SourceConfig {
@@ -214,9 +241,19 @@ function validateDestination(
 		}
 		case "filesystem": {
 			assertNonEmptyString(d.dir, "destination.dir");
+			let verify: "size" | "sha256" = "size";
+			if (d.verify !== undefined) {
+				if (d.verify !== "size" && d.verify !== "sha256") {
+					throw new Error(
+						`"destination.verify" must be "size" or "sha256"`,
+					);
+				}
+				verify = d.verify;
+			}
 			return {
 				adapter: "filesystem",
 				dir: resolvePath(d.dir as string, baseDir),
+				verify,
 			};
 		}
 		default:
@@ -227,10 +264,70 @@ function validateDestination(
 	}
 }
 
+function validateTransfer(raw: unknown): TransferConfig | undefined {
+	if (raw === undefined) return undefined;
+	if (!raw || typeof raw !== "object") {
+		throw new Error(`"transfer" must be an object`);
+	}
+	const t = raw as Record<string, unknown>;
+
+	const out: TransferConfig = {};
+
+	if (t.concurrency !== undefined) {
+		if (
+			typeof t.concurrency !== "number" ||
+			!Number.isInteger(t.concurrency) ||
+			t.concurrency < 1
+		) {
+			throw new Error(
+				`"transfer.concurrency" must be a positive integer`,
+			);
+		}
+		out.concurrency = t.concurrency;
+	}
+
+	if (t.retry !== undefined) {
+		if (!t.retry || typeof t.retry !== "object") {
+			throw new Error(`"transfer.retry" must be an object`);
+		}
+		const r = t.retry as Record<string, unknown>;
+		const retry: RetryConfig = {};
+		if (r.attempts !== undefined) {
+			if (
+				typeof r.attempts !== "number" ||
+				!Number.isInteger(r.attempts) ||
+				r.attempts < 1
+			) {
+				throw new Error(
+					`"transfer.retry.attempts" must be a positive integer`,
+				);
+			}
+			retry.attempts = r.attempts;
+		}
+		for (const k of ["backoffMs", "maxBackoffMs"] as const) {
+			if (r[k] !== undefined) {
+				if (typeof r[k] !== "number" || r[k] < 0) {
+					throw new Error(
+						`"transfer.retry.${k}" must be a non-negative number`,
+					);
+				}
+				retry[k] = r[k];
+			}
+		}
+		out.retry = retry;
+	}
+
+	return out;
+}
+
 /**
  * Validate a raw object as a {@linkcode FileRelayConfig}.
  * Throws descriptive errors on invalid input.
- * Relative paths are resolved against `baseDir` (if provided) or `Deno.cwd()`.
+ *
+ * Relative paths in the config are resolved against `baseDir` if provided,
+ * otherwise against `Deno.cwd()`. When calling programmatically you should
+ * prefer passing an explicit `baseDir` (or absolute paths) to avoid cwd-
+ * dependent behaviour.
  */
 export function validateConfig(
 	raw: unknown,
@@ -246,13 +343,16 @@ export function validateConfig(
 
 	const source = validateSource(c.source, baseDir);
 	const destination = validateDestination(c.destination, baseDir);
+	const transfer = validateTransfer(c.transfer);
 
-	return {
+	const result: FileRelayConfig = {
 		logDir: resolvePath(c.logDir as string, baseDir),
 		trackDir: resolvePath(c.trackDir as string, baseDir),
 		source,
 		destination,
 	};
+	if (transfer) result.transfer = transfer;
+	return result;
 }
 
 // -----------------------------------------------------------------------------
