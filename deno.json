@@ -1,6 +1,6 @@
 {
   "name": "@marianmeres/file-relay",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "exports": {
     ".": "./src/cli.ts",
     "./mod": "./src/mod.ts",
