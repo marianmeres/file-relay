@@ -80,12 +80,41 @@ async function main() {
 		envExample = "STATIC_UPLOAD_SERVER_URL=...\nSTATIC_UPLOAD_SERVER_TOKEN=...\n";
 	}
 
+	// Optional email notification (e.g. a "the cron ran" heartbeat + failure alerts).
+	const wantNotify = askChoice(
+		"Enable email notifications after each run?",
+		["yes", "no"],
+		"no",
+	) === "yes";
+
+	let notifyConfig: Record<string, unknown> | undefined;
+	if (wantNotify) {
+		notifyConfig = {
+			to: "${NOTIFY_TO}",
+			from: "${NOTIFY_FROM}",
+			on: "always",
+			smtp: {
+				host: "${SMTP_HOST}",
+				port: 587,
+				user: "${SMTP_USER}",
+				pass: "${SMTP_PASS}",
+			},
+		};
+		envExample += "\n# Email notifications\n" +
+			"NOTIFY_TO=ops@example.com\n" +
+			"NOTIFY_FROM=file-relay@example.com\n" +
+			"SMTP_HOST=smtp.example.com\n" +
+			"SMTP_USER=...\n" +
+			"SMTP_PASS=...\n";
+	}
+
 	const configJson = JSON.stringify(
 		{
 			logDir: "./log",
 			trackDir: "./track",
 			source: { dir: sourceDir, glob: "**/*" },
 			destination: destinationConfig,
+			...(notifyConfig ? { notify: notifyConfig } : {}),
 		},
 		null,
 		"\t",

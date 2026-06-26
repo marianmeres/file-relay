@@ -414,6 +414,229 @@ Deno.test("config - rejects unknown verify mode", () => {
 	);
 });
 
+Deno.test("config - validates a full notify block and applies defaults", () => {
+	const config = validateConfig({
+		logDir: "/tmp/logs",
+		trackDir: "/tmp/track",
+		source: { dir: "/data" },
+		destination: { adapter: "filesystem", dir: "/mnt" },
+		notify: {
+			to: "ops@example.com",
+			from: "relay@host",
+			smtp: { host: "smtp.example.com", user: "u", pass: "p" },
+		},
+	});
+
+	assertEquals(config.notify?.to, "ops@example.com");
+	assertEquals(config.notify?.from, "relay@host");
+	assertEquals(config.notify?.on, "always"); // default
+	assertEquals(config.notify?.subjectPrefix, "[file-relay]"); // default
+	assertEquals(config.notify?.attachLog, false); // default
+	assertEquals(config.notify?.smtp.host, "smtp.example.com");
+	assertEquals(config.notify?.smtp.port, 587); // default
+	assertEquals(config.notify?.smtp.user, "u");
+	assertEquals(config.notify?.smtp.pass, "p");
+});
+
+Deno.test("config - notify accepts arrays for to/cc/bcc and on=failure", () => {
+	const config = validateConfig({
+		logDir: "/tmp/logs",
+		trackDir: "/tmp/track",
+		source: { dir: "/data" },
+		destination: { adapter: "filesystem", dir: "/mnt" },
+		notify: {
+			to: ["a@host", "b@host"],
+			from: "relay@host",
+			on: "failure",
+			cc: "cc@host",
+			bcc: ["x@host"],
+			subjectPrefix: "[backup]",
+			attachLog: true,
+			smtp: {
+				host: "smtp.example.com",
+				port: 465,
+				secure: true,
+				connectionTimeout: 15000,
+				socketTimeout: 20000,
+			},
+		},
+	});
+
+	assertEquals(config.notify?.to, ["a@host", "b@host"]);
+	assertEquals(config.notify?.on, "failure");
+	assertEquals(config.notify?.cc, "cc@host");
+	assertEquals(config.notify?.bcc, ["x@host"]);
+	assertEquals(config.notify?.subjectPrefix, "[backup]");
+	assertEquals(config.notify?.attachLog, true);
+	assertEquals(config.notify?.smtp.port, 465);
+	assertEquals(config.notify?.smtp.secure, true);
+	assertEquals(config.notify?.smtp.connectionTimeout, 15000);
+	assertEquals(config.notify?.smtp.socketTimeout, 20000);
+});
+
+Deno.test("config - rejects non-positive notify.smtp.connectionTimeout", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				notify: {
+					to: "ops@host",
+					from: "r@host",
+					smtp: { host: "smtp", connectionTimeout: 0 },
+				},
+			}),
+		Error,
+		'"notify.smtp.connectionTimeout"',
+	);
+});
+
+Deno.test("config - notify is omitted when not provided", () => {
+	const config = validateConfig({
+		logDir: "/tmp/logs",
+		trackDir: "/tmp/track",
+		source: { dir: "/data" },
+		destination: { adapter: "filesystem", dir: "/mnt" },
+	});
+	assertEquals(config.notify, undefined);
+});
+
+Deno.test("config - rejects notify missing to", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				notify: { from: "r@host", smtp: { host: "smtp" } },
+			}),
+		Error,
+		'"notify.to"',
+	);
+});
+
+Deno.test("config - rejects notify missing from", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				notify: { to: "ops@host", smtp: { host: "smtp" } },
+			}),
+		Error,
+		'"notify.from"',
+	);
+});
+
+Deno.test("config - rejects notify missing smtp.host", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				notify: { to: "ops@host", from: "r@host", smtp: {} },
+			}),
+		Error,
+		'"notify.smtp.host"',
+	);
+});
+
+Deno.test("config - rejects notify with lone smtp.user (no pass)", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				notify: {
+					to: "ops@host",
+					from: "r@host",
+					smtp: { host: "smtp", user: "u" },
+				},
+			}),
+		Error,
+		"must be set together",
+	);
+});
+
+Deno.test("config - rejects invalid notify.on", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				notify: {
+					to: "ops@host",
+					from: "r@host",
+					on: "sometimes",
+					smtp: { host: "smtp" },
+				},
+			}),
+		Error,
+		'"notify.on"',
+	);
+});
+
+Deno.test("config - rejects invalid notify.smtp.port", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				notify: {
+					to: "ops@host",
+					from: "r@host",
+					smtp: { host: "smtp", port: 70000 },
+				},
+			}),
+		Error,
+		'"notify.smtp.port"',
+	);
+});
+
+Deno.test("config - notify smtp credentials support env interpolation", async () => {
+	const tmpDir = await createTempDir();
+	try {
+		Deno.env.set("TEST_SMTP_PASS", "s3cret");
+		const configPath = join(tmpDir, "config.json");
+		await Deno.writeTextFile(
+			configPath,
+			JSON.stringify({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				notify: {
+					to: "ops@host",
+					from: "r@host",
+					smtp: {
+						host: "smtp.example.com",
+						user: "u",
+						pass: "${TEST_SMTP_PASS}",
+					},
+				},
+			}),
+		);
+		const config = await loadConfig(configPath);
+		assertEquals(config.notify?.smtp.pass, "s3cret");
+	} finally {
+		Deno.env.delete("TEST_SMTP_PASS");
+		await cleanup(tmpDir);
+	}
+});
+
 Deno.test("config - loadConfig rejects invalid JSON", async () => {
 	const tmpDir = await createTempDir();
 	try {

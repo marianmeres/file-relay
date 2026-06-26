@@ -191,6 +191,7 @@ interface FileRelayConfig {
 	source: SourceConfig;
 	destination: DestinationConfig;
 	transfer?: TransferConfig; // Optional retry/concurrency
+	notify?: NotifyConfig; // Optional email notification (CLI runner only)
 }
 ```
 
@@ -270,6 +271,61 @@ interface RetryConfig {
 ```
 
 Backoff doubles between attempts, capped at `maxBackoffMs`.
+
+---
+
+### `NotifyConfig`
+
+Optional email notification for a relay run. Acted upon **only by the CLI runner** —
+the programmatic `relay()` ignores it, so importing `@marianmeres/file-relay/mod`
+never pulls in an SMTP dependency. All string fields support `${ENV_VAR}` interpolation.
+
+```typescript
+interface NotifyConfig {
+	to: string | string[]; // Recipient(s)
+	from: string; // Sender address
+	on?: NotifyTrigger; // When to send. Default: "always"
+	subjectPrefix?: string; // Subject prefix. Default: "[file-relay]"
+	replyTo?: string; // Reply-To address
+	cc?: string | string[]; // CC recipient(s)
+	bcc?: string | string[]; // BCC recipient(s)
+	attachLog?: boolean; // Attach captured output as a .log file. Default: false
+	smtp: NotifySmtpConfig; // SMTP connection settings
+}
+```
+
+The email subject summarizes the outcome (e.g. `[file-relay] OK on host — 3 transferred`)
+and the body is the captured run output preceded by a one-line status header.
+
+---
+
+### `NotifyTrigger`
+
+```typescript
+type NotifyTrigger =
+	| "always" // Send after every run (heartbeat + alerts)
+	| "failure"; // Send only on failed/partial/preflight-failed/aborted or a fatal error
+```
+
+---
+
+### `NotifySmtpConfig`
+
+```typescript
+interface NotifySmtpConfig {
+	host: string; // SMTP server hostname
+	port?: number; // SMTP port. Default: 587 (465 for implicit TLS)
+	secure?: boolean; // Use implicit TLS. Default: port === 465
+	user?: string; // SMTP AUTH username (set together with pass)
+	pass?: string; // SMTP AUTH password (set together with user)
+	connectionTimeout?: number; // TCP connect timeout (ms)
+	socketTimeout?: number; // Socket/data timeout (ms)
+	tls?: { // TLS overrides for vanity hosts / self-signed certs
+		servername?: string;
+		rejectUnauthorized?: boolean;
+	};
+}
+```
 
 ---
 

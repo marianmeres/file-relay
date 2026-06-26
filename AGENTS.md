@@ -35,16 +35,18 @@ src/
   file-finder.ts                  # Recursive dir scan with glob/exclude + regex match/ignore filtering
   tracker.ts                      # Filesystem marker-file deduplication (+ sweepTmp)
   relay.ts                        # Orchestrator, retry/concurrency/abort, per-run log writer
+  notify.ts                       # CLI-only email notification (send-email/SMTP). NOT exported from mod
   adapters/
     adapter.ts                    # RelayAdapter + TransferOptions + CheckResult + factory
     static-upload-server.ts       # HTTP streaming multipart upload adapter
     filesystem.ts                 # Raw copy adapter (with optional sha256 verify)
 tests/
   _helpers.ts                     # Test utilities (temp dirs, mock server)
-  config.test.ts                  # Config validation tests
+  config.test.ts                  # Config validation tests (incl. notify block)
   file-finder.test.ts             # File discovery tests (incl. symlink cycle)
   tracker.test.ts                 # Tracker + sweepTmp tests
   relay.test.ts                   # Integration tests (retry, concurrency, abort)
+  notify.test.ts                  # Notification logic (shouldNotify, buildNotificationMessage)
   adapters/
     static-upload-server.test.ts  # HTTP adapter tests (streaming, preflight, non-JSON 2xx)
     filesystem.test.ts            # Copy adapter tests (preflight, sha256)
@@ -77,14 +79,19 @@ config.json
             -> tracker.markTransferred() on success
        -> close log file, restore clog hook (reentrancy-safe)
   -> RelayRunResult { status, success, transfers, ... }
+  -> [CLI only] if config.notify && !dryRun && !--no-notify:
+       sendNotification() emails the captured run output via SMTP
+       (failure is logged, never alters the relay exit code)
 ```
 
 ### Core Components
 
 1. **Config** (`config.ts`): JSON config with `${ENV_VAR}` interpolation. Validates
    source (dir, glob, exclude, match, ignore, followSymlinks), destination
-   (adapter union + optional `verify: "size" | "sha256"` for filesystem), and
-   optional `transfer` (concurrency, retry.attempts/backoffMs/maxBackoffMs).
+   (adapter union + optional `verify: "size" | "sha256"` for filesystem),
+   optional `transfer` (concurrency, retry.attempts/backoffMs/maxBackoffMs), and
+   optional `notify` (email recipients/from/on/smtp; SMTP auth is all-or-nothing).
+   `notify` is validated here but acted upon only by the CLI runner.
    Absolute paths use `isAbsolute()`, not string compare — trailing slashes
    are handled correctly.
 
@@ -115,13 +122,23 @@ config.json
      transfers scheduled, and `status: "aborted"` is returned.
 
 6. **CLI** (`cli.ts`): Arg parsing (`--concurrency`, `--retry-attempts`,
-   `--dry-run`, `--verbose`), SIGINT/SIGTERM handler that flips an
+   `--dry-run`, `--verbose`, `--no-notify`), SIGINT/SIGTERM handler that flips an
    `AbortController`, calls `relay()`. Exit codes: 0=ok, 1=any failure,
-   2=config/fatal, 130=aborted.
+   2=config/fatal, 130=aborted. When `config.notify` is set (and not a dry run /
+   `--no-notify`), captures the run's clog output via a chained global hook and,
+   after the run, hands it to `notify.ts` — dynamically imported so the SMTP
+   dependency loads only when a mail is actually sent.
 
-7. **Install** (`install.ts`): Scaffolding CLI. Prompts for source dir and
-   adapter type, creates a ready-to-use directory with config.json, deno.json,
-   .env.example, log/, track/.
+7. **Install** (`install.ts`): Scaffolding CLI. Prompts for source dir,
+   adapter type, and optional email notifications, creating a ready-to-use
+   directory with config.json, deno.json, .env.example, log/, track/.
+
+8. **Notify** (`notify.ts`): CLI-only. `shouldNotify()` (trigger gate),
+   `buildNotificationMessage()` (pure subject/body builder — unit-tested), and
+   `sendNotification()` (calls `@marianmeres/send-email`'s `send()`; never
+   throws — a send failure is returned, not propagated, so it can't change the
+   relay exit code). Not re-exported from `mod.ts`, keeping nodemailer out of
+   the programmatic API's dependency graph.
 
 ### Adapter Pattern
 
@@ -162,6 +179,10 @@ To add a new adapter:
 7. Formatting: tabs, 90 char line width, 4-space indent width.
 8. Tests use temp directories with `try/finally` cleanup; `createClog.global.debug = false`
    at the top of noisy test files.
+9. Email notification is a CLI-layer concern only. `relay()` and `mod.ts` stay
+   free of `@marianmeres/send-email`/nodemailer — `notify.ts` is imported
+   dynamically from `cli.ts`. Keep it that way: the programmatic API must not
+   pull an SMTP dependency. A notification send must never throw into the run.
 
 ## Invariants
 

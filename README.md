@@ -78,7 +78,14 @@ Set up as a cron job:
 ```bash
 # Every hour
 0 * * * * RELAY_UPLOAD_TOKEN=secret deno run -A jsr:@marianmeres/file-relay /etc/file-relay/config.json
+
+# Daily, loading credentials (upload token, SMTP, ...) from an .env file
+0 3 * * * deno run -A --env-file=/etc/file-relay/.env jsr:@marianmeres/file-relay /etc/file-relay/config.json
 ```
+
+With a `notify` block configured (see [Email Notifications](#email-notifications-optional)),
+each run emails you its result — a daily "it ran" confirmation, or an immediate
+alert when a transfer fails.
 
 ## CLI Options
 
@@ -90,6 +97,7 @@ Options:
   --verbose                Enable debug-level log output
   --concurrency=N          Override config.transfer.concurrency
   --retry-attempts=N       Override config.transfer.retry.attempts
+  --no-notify              Suppress the email notification for this run
   --help                   Show help message
   --version                Show version
 ```
@@ -189,6 +197,65 @@ Top-level `transfer` object controls retry and concurrency for all adapters:
 }
 ```
 
+### Email Notifications (optional)
+
+Add a top-level `notify` block to get an email after each run — a "the cron ran"
+heartbeat plus an immediate alert when something fails. The email subject carries
+the status at a glance (so you can triage from the inbox), and the body is the run's
+log output. Uses [@marianmeres/send-email](https://jsr.io/@marianmeres/send-email)
+(SMTP) under the hood.
+
+```json
+{
+	"notify": {
+		"to": "ops@example.com",
+		"from": "file-relay@myserver",
+		"on": "always",
+		"smtp": {
+			"host": "${SMTP_HOST}",
+			"port": 587,
+			"user": "${SMTP_USER}",
+			"pass": "${SMTP_PASS}"
+		}
+	}
+}
+```
+
+| Field           | Type                   | Default          | Description                                                |
+| --------------- | ---------------------- | ---------------- | ---------------------------------------------------------- |
+| `to`            | `string \| string[]`   | required         | Recipient address(es)                                      |
+| `from`          | `string`               | required         | Sender address                                             |
+| `on`            | `"always" \| "failure"`| `"always"`       | Send every run, or only on a failed/abnormal run           |
+| `subjectPrefix` | `string`               | `"[file-relay]"` | Prepended to every subject line                            |
+| `replyTo`       | `string`               | —                | Reply-To address                                           |
+| `cc` / `bcc`    | `string \| string[]`   | —                | Carbon-copy recipient(s)                                   |
+| `attachLog`     | `boolean`              | `false`          | Also attach the captured output as a `.log` file           |
+| `smtp.host`     | `string`               | required         | SMTP server hostname                                       |
+| `smtp.port`     | `number`               | `587`            | SMTP port (`465` for implicit TLS)                         |
+| `smtp.secure`   | `boolean`              | `port === 465`   | Use implicit TLS                                           |
+| `smtp.user`     | `string`               | —                | SMTP AUTH username (set together with `pass`)              |
+| `smtp.pass`     | `string`               | —                | SMTP AUTH password (set together with `user`)              |
+| `smtp.connectionTimeout` | `number`      | —                | Connect timeout (ms) — keep modest so a dead SMTP host can't stall the cron |
+| `smtp.socketTimeout` | `number`          | —                | Socket/data timeout (ms)                                   |
+| `smtp.tls`      | `object`               | —                | `{ servername?, rejectUnauthorized? }` TLS overrides       |
+
+`on: "failure"` fires when the run status is `failed`, `partial`, `preflight-failed`,
+or `aborted`, or when a fatal error is thrown. A subject like
+`[file-relay] OK on host — 3 transferred` means everything is fine;
+`[file-relay] FAILED on host — 0 transferred, 2 failed` means look now.
+
+Notes:
+
+- Like all config strings, SMTP credentials support `${ENV_VAR}` — keep secrets in
+  `.env`, never in the committed config.
+- Notifications are **skipped** for `--dry-run` and when `--no-notify` is passed.
+  (`${ENV_VAR}`s referenced under `notify.smtp` must still resolve at load time even
+  then — interpolation happens once, when the config is loaded.)
+- A failed email send **never** changes the exit code — it is logged as a warning
+  to stderr (so a cron `MAILTO` still catches it) and the run's own status stands.
+- Omit `notify` entirely and nothing changes — the SMTP dependency is only loaded
+  when a notification is actually sent.
+
 ### Environment Variable Interpolation
 
 String values in config support `${ENV_VAR}` syntax, resolved at load time:
@@ -254,6 +321,7 @@ and the programmatic API. Console output continues normally via `@marianmeres/cl
 3. **Transfer** -- Upload/copy each file using the configured adapter
 4. **Track** -- Write a `.transferred.json` marker for each successful transfer
 5. **Log** -- Write detailed per-run log file to `logDir`
+6. **Notify** -- (CLI, optional) email the run output via SMTP when `notify` is configured
 
 Each run is idempotent: re-running transfers only new/unprocessed files.
 

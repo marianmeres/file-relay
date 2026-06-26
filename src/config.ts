@@ -83,6 +83,80 @@ export interface TransferConfig {
 	retry?: RetryConfig;
 }
 
+/**
+ * When a notification email is sent after a relay run.
+ *
+ * - `"always"` — send after every run (a "the cron ran" heartbeat plus alerts).
+ * - `"failure"` — send only when something went wrong (status `failed`,
+ *   `partial`, `preflight-failed`, `aborted`, or a fatal error).
+ */
+export type NotifyTrigger = "always" | "failure";
+
+/**
+ * SMTP connection settings for email notifications. A subset of
+ * `@marianmeres/send-email`'s `NodemailerTransportOptions`, expressed flat so
+ * it reads naturally in JSON. All string values support `${ENV_VAR}`.
+ */
+export interface NotifySmtpConfig {
+	/** SMTP server hostname. */
+	host: string;
+	/** SMTP server port. Default: `587` (STARTTLS; use `465` for implicit TLS). */
+	port?: number;
+	/** Use implicit TLS. Default: `port === 465`. */
+	secure?: boolean;
+	/** SMTP AUTH username. Omit (together with `pass`) for unauthenticated relays. */
+	user?: string;
+	/** SMTP AUTH password. Omit (together with `user`) for unauthenticated relays. */
+	pass?: string;
+	/**
+	 * Connection timeout in ms — how long to wait for the TCP connect. Keep this
+	 * modest so a notification to an unresponsive SMTP host can't stall a cron
+	 * run. Default: send-email/nodemailer's own default.
+	 */
+	connectionTimeout?: number;
+	/** Socket (data) timeout in ms. Default: send-email/nodemailer's own default. */
+	socketTimeout?: number;
+	/** TLS overrides for vanity hostnames / self-signed certs. */
+	tls?: {
+		/** SNI / certificate hostname override. */
+		servername?: string;
+		/** Set `false` to disable cert validation (insecure — last resort only). */
+		rejectUnauthorized?: boolean;
+	};
+}
+
+/**
+ * Optional email notification for a relay run. Consumed by the CLI runner
+ * (`cli.ts`) — the programmatic {@linkcode relay} function does not send mail,
+ * so importing `@marianmeres/file-relay/mod` never pulls in an SMTP dependency.
+ *
+ * The email body is the captured run output (what the CLI logged), prefixed
+ * with a one-line status summary. Uses `@marianmeres/send-email` underneath.
+ */
+export interface NotifyConfig {
+	/** Recipient address, or a list of addresses. */
+	to: string | string[];
+	/** Sender address. */
+	from: string;
+	/** When to send. Default: `"always"`. See {@linkcode NotifyTrigger}. */
+	on?: NotifyTrigger;
+	/** Subject-line prefix. Default: `"[file-relay]"`. */
+	subjectPrefix?: string;
+	/** Reply-To address. */
+	replyTo?: string;
+	/** CC recipient, or a list of recipients. */
+	cc?: string | string[];
+	/** BCC recipient, or a list of recipients. */
+	bcc?: string | string[];
+	/**
+	 * Attach the full captured run output as a `.log` file in addition to
+	 * including it in the body. Default: `false`.
+	 */
+	attachLog?: boolean;
+	/** SMTP connection settings. */
+	smtp: NotifySmtpConfig;
+}
+
 /** Top-level configuration for a file-relay run. */
 export interface FileRelayConfig {
 	/** Directory for per-run log files. */
@@ -95,6 +169,11 @@ export interface FileRelayConfig {
 	destination: DestinationConfig;
 	/** Optional transfer-level settings (concurrency, retry). */
 	transfer?: TransferConfig;
+	/**
+	 * Optional email notification settings. Only the CLI runner acts on this;
+	 * `relay()` ignores it. See {@linkcode NotifyConfig}.
+	 */
+	notify?: NotifyConfig;
 }
 
 // -----------------------------------------------------------------------------
@@ -320,6 +399,162 @@ function validateTransfer(raw: unknown): TransferConfig | undefined {
 	return out;
 }
 
+function assertAddress(
+	val: unknown,
+	field: string,
+): string | string[] {
+	if (typeof val === "string") {
+		if (val.trim() === "") {
+			throw new Error(`"${field}" must be a non-empty string`);
+		}
+		return val;
+	}
+	if (Array.isArray(val)) {
+		if (val.length === 0) {
+			throw new Error(`"${field}" must not be an empty array`);
+		}
+		for (const entry of val) {
+			if (typeof entry !== "string" || entry.trim() === "") {
+				throw new Error(
+					`"${field}" entries must be non-empty strings`,
+				);
+			}
+		}
+		return val as string[];
+	}
+	throw new Error(`"${field}" must be a string or an array of strings`);
+}
+
+function validateNotifySmtp(raw: unknown): NotifySmtpConfig {
+	if (!raw || typeof raw !== "object") {
+		throw new Error(`"notify.smtp" must be an object`);
+	}
+	const s = raw as Record<string, unknown>;
+
+	assertNonEmptyString(s.host, "notify.smtp.host");
+
+	const out: NotifySmtpConfig = { host: s.host as string, port: 587 };
+
+	if (s.port !== undefined) {
+		if (
+			typeof s.port !== "number" ||
+			!Number.isInteger(s.port) ||
+			s.port < 1 ||
+			s.port > 65535
+		) {
+			throw new Error(
+				`"notify.smtp.port" must be an integer between 1 and 65535`,
+			);
+		}
+		out.port = s.port;
+	}
+
+	if (s.secure !== undefined) {
+		if (typeof s.secure !== "boolean") {
+			throw new Error(`"notify.smtp.secure" must be a boolean`);
+		}
+		out.secure = s.secure;
+	}
+
+	for (const k of ["connectionTimeout", "socketTimeout"] as const) {
+		if (s[k] !== undefined) {
+			if (typeof s[k] !== "number" || !(s[k] as number > 0)) {
+				throw new Error(`"notify.smtp.${k}" must be a positive number`);
+			}
+			out[k] = s[k] as number;
+		}
+	}
+
+	// Auth is all-or-nothing: a lone user or pass is almost always a mistake.
+	const hasUser = s.user !== undefined;
+	const hasPass = s.pass !== undefined;
+	if (hasUser !== hasPass) {
+		throw new Error(
+			`"notify.smtp.user" and "notify.smtp.pass" must be set together`,
+		);
+	}
+	if (hasUser) {
+		assertNonEmptyString(s.user, "notify.smtp.user");
+		assertNonEmptyString(s.pass, "notify.smtp.pass");
+		out.user = s.user as string;
+		out.pass = s.pass as string;
+	}
+
+	if (s.tls !== undefined) {
+		if (!s.tls || typeof s.tls !== "object") {
+			throw new Error(`"notify.smtp.tls" must be an object`);
+		}
+		const t = s.tls as Record<string, unknown>;
+		const tls: NotifySmtpConfig["tls"] = {};
+		if (t.servername !== undefined) {
+			assertNonEmptyString(t.servername, "notify.smtp.tls.servername");
+			tls.servername = t.servername as string;
+		}
+		if (t.rejectUnauthorized !== undefined) {
+			if (typeof t.rejectUnauthorized !== "boolean") {
+				throw new Error(
+					`"notify.smtp.tls.rejectUnauthorized" must be a boolean`,
+				);
+			}
+			tls.rejectUnauthorized = t.rejectUnauthorized;
+		}
+		out.tls = tls;
+	}
+
+	return out;
+}
+
+function validateNotify(raw: unknown): NotifyConfig | undefined {
+	if (raw === undefined) return undefined;
+	if (!raw || typeof raw !== "object") {
+		throw new Error(`"notify" must be an object`);
+	}
+	const n = raw as Record<string, unknown>;
+
+	const to = assertAddress(n.to, "notify.to");
+	assertNonEmptyString(n.from, "notify.from");
+
+	const out: NotifyConfig = {
+		to,
+		from: n.from,
+		on: "always",
+		subjectPrefix: "[file-relay]",
+		attachLog: false,
+		smtp: validateNotifySmtp(n.smtp),
+	};
+
+	if (n.on !== undefined) {
+		if (n.on !== "always" && n.on !== "failure") {
+			throw new Error(`"notify.on" must be "always" or "failure"`);
+		}
+		out.on = n.on;
+	}
+
+	if (n.subjectPrefix !== undefined) {
+		if (typeof n.subjectPrefix !== "string") {
+			throw new Error(`"notify.subjectPrefix" must be a string`);
+		}
+		out.subjectPrefix = n.subjectPrefix;
+	}
+
+	if (n.replyTo !== undefined) {
+		assertNonEmptyString(n.replyTo, "notify.replyTo");
+		out.replyTo = n.replyTo as string;
+	}
+
+	if (n.cc !== undefined) out.cc = assertAddress(n.cc, "notify.cc");
+	if (n.bcc !== undefined) out.bcc = assertAddress(n.bcc, "notify.bcc");
+
+	if (n.attachLog !== undefined) {
+		if (typeof n.attachLog !== "boolean") {
+			throw new Error(`"notify.attachLog" must be a boolean`);
+		}
+		out.attachLog = n.attachLog;
+	}
+
+	return out;
+}
+
 /**
  * Validate a raw object as a {@linkcode FileRelayConfig}.
  * Throws descriptive errors on invalid input.
@@ -344,6 +579,7 @@ export function validateConfig(
 	const source = validateSource(c.source, baseDir);
 	const destination = validateDestination(c.destination, baseDir);
 	const transfer = validateTransfer(c.transfer);
+	const notify = validateNotify(c.notify);
 
 	const result: FileRelayConfig = {
 		logDir: resolvePath(c.logDir as string, baseDir),
@@ -352,6 +588,7 @@ export function validateConfig(
 		destination,
 	};
 	if (transfer) result.transfer = transfer;
+	if (notify) result.notify = notify;
 	return result;
 }
 

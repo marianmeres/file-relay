@@ -9,5 +9,16 @@
 		"adapter": "static-upload-server",
 		"url": "${STATIC_UPLOAD_SERVER_URL}",
 		"token": "${STATIC_UPLOAD_SERVER_TOKEN}"
+	},
+	"notify": {
+		"to": "${NOTIFY_TO}",
+		"from": "${NOTIFY_FROM}",
+		"on": "always",
+		"smtp": {
+			"host": "${SMTP_HOST}",
+			"port": 587,
+			"user": "${SMTP_USER}",
+			"pass": "${SMTP_PASS}"
+		}
 	}
 }
