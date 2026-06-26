@@ -474,6 +474,51 @@ Deno.test("config - notify accepts arrays for to/cc/bcc and on=failure", () => {
 	assertEquals(config.notify?.smtp.socketTimeout, 20000);
 });
 
+Deno.test("config - coerces boolean fields from strings (env interpolation)", () => {
+	// ${ENV_VAR} interpolation always yields strings, so env-driven booleans
+	// arrive here as text and must be parsed.
+	const config = validateConfig({
+		logDir: "/tmp/logs",
+		trackDir: "/tmp/track",
+		source: { dir: "/data", followSymlinks: "true" },
+		destination: { adapter: "filesystem", dir: "/mnt" },
+		notify: {
+			to: "a@host",
+			from: "relay@host",
+			attachLog: "no",
+			smtp: {
+				host: "smtp.example.com",
+				secure: "false",
+				tls: { rejectUnauthorized: "0" },
+			},
+		},
+	});
+
+	assertEquals(config.source.followSymlinks, true);
+	assertEquals(config.notify?.attachLog, false);
+	assertEquals(config.notify?.smtp.secure, false);
+	assertEquals(config.notify?.smtp.tls?.rejectUnauthorized, false);
+});
+
+Deno.test("config - rejects unrecognized boolean string (fail-loud)", () => {
+	assertThrows(
+		() =>
+			validateConfig({
+				logDir: "/tmp/logs",
+				trackDir: "/tmp/track",
+				source: { dir: "/data" },
+				destination: { adapter: "filesystem", dir: "/mnt" },
+				notify: {
+					to: "a@host",
+					from: "relay@host",
+					smtp: { host: "smtp.example.com", secure: "treu" },
+				},
+			}),
+		Error,
+		'"notify.smtp.secure" must be a boolean',
+	);
+});
+
 Deno.test("config - rejects non-positive notify.smtp.connectionTimeout", () => {
 	assertThrows(
 		() =>

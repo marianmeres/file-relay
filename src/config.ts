@@ -1,4 +1,5 @@
 import { dirname, isAbsolute, resolve } from "@std/path";
+import { parseBoolean } from "@marianmeres/parse-boolean";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -222,6 +223,27 @@ function assertNonEmptyString(
 	}
 }
 
+/**
+ * Validates a boolean config field. Accepts a real JSON boolean, or a string
+ * — `${ENV_VAR}` interpolation always yields strings, so an env-driven value
+ * like `"false"` arrives here as text. Strings are parsed via parse-boolean in
+ * strict mode so unrecognized values (e.g. a typo `"treu"`) throw rather than
+ * silently becoming `false`, keeping config validation fail-loud.
+ */
+function assertBoolean(val: unknown, field: string): boolean {
+	if (typeof val === "boolean") return val;
+	if (typeof val === "string") {
+		try {
+			return parseBoolean(val, { strict: true });
+		} catch {
+			throw new Error(
+				`"${field}" must be a boolean (got ${JSON.stringify(val)})`,
+			);
+		}
+	}
+	throw new Error(`"${field}" must be a boolean`);
+}
+
 function resolvePath(val: string, baseDir?: string): string {
 	if (isAbsolute(val)) return resolve(val);
 	return resolve(baseDir ?? Deno.cwd(), val);
@@ -271,12 +293,9 @@ function validateSource(raw: unknown, baseDir?: string): SourceConfig {
 			}
 		}
 	}
-	if (
-		s.followSymlinks !== undefined &&
-		typeof s.followSymlinks !== "boolean"
-	) {
-		throw new Error(`"source.followSymlinks" must be a boolean`);
-	}
+	const followSymlinks = s.followSymlinks === undefined
+		? false
+		: assertBoolean(s.followSymlinks, "source.followSymlinks");
 
 	return {
 		dir: resolvePath(s.dir as string, baseDir),
@@ -284,7 +303,7 @@ function validateSource(raw: unknown, baseDir?: string): SourceConfig {
 		exclude: (s.exclude as string[]) ?? [],
 		match: (s.match as string[]) ?? [],
 		ignore: (s.ignore as string[]) ?? [],
-		followSymlinks: (s.followSymlinks as boolean) ?? false,
+		followSymlinks,
 	};
 }
 
@@ -450,10 +469,7 @@ function validateNotifySmtp(raw: unknown): NotifySmtpConfig {
 	}
 
 	if (s.secure !== undefined) {
-		if (typeof s.secure !== "boolean") {
-			throw new Error(`"notify.smtp.secure" must be a boolean`);
-		}
-		out.secure = s.secure;
+		out.secure = assertBoolean(s.secure, "notify.smtp.secure");
 	}
 
 	for (const k of ["connectionTimeout", "socketTimeout"] as const) {
@@ -491,12 +507,10 @@ function validateNotifySmtp(raw: unknown): NotifySmtpConfig {
 			tls.servername = t.servername as string;
 		}
 		if (t.rejectUnauthorized !== undefined) {
-			if (typeof t.rejectUnauthorized !== "boolean") {
-				throw new Error(
-					`"notify.smtp.tls.rejectUnauthorized" must be a boolean`,
-				);
-			}
-			tls.rejectUnauthorized = t.rejectUnauthorized;
+			tls.rejectUnauthorized = assertBoolean(
+				t.rejectUnauthorized,
+				"notify.smtp.tls.rejectUnauthorized",
+			);
 		}
 		out.tls = tls;
 	}
@@ -546,10 +560,7 @@ function validateNotify(raw: unknown): NotifyConfig | undefined {
 	if (n.bcc !== undefined) out.bcc = assertAddress(n.bcc, "notify.bcc");
 
 	if (n.attachLog !== undefined) {
-		if (typeof n.attachLog !== "boolean") {
-			throw new Error(`"notify.attachLog" must be a boolean`);
-		}
-		out.attachLog = n.attachLog;
+		out.attachLog = assertBoolean(n.attachLog, "notify.attachLog");
 	}
 
 	return out;
