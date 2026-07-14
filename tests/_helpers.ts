@@ -66,14 +66,35 @@ export function createTestConfig(
 	};
 }
 
+/** Options for {@linkcode createMockUploadServer}. */
+export interface MockUploadServerOptions {
+	/**
+	 * Simulate a pre-1.7.0 server: no PUT route, so a PUT falls through to 404
+	 * exactly as the real one does.
+	 */
+	noPutRoute?: boolean;
+	/**
+	 * Report this many bytes stored in the PUT response's `size`, regardless of
+	 * what actually arrived. Used to exercise the client's truncation guard.
+	 */
+	forceReportedSize?: number;
+}
+
 /**
- * Start a minimal mock HTTP server that accepts multipart uploads
- * and returns the expected { uploaded: [...] } response.
+ * Start a mock of `@marianmeres/deno-static-upload-server` >= 1.7.0, speaking
+ * both upload routes:
+ *
+ * - `POST /` — legacy `multipart/form-data`, responds `{ uploaded }`
+ * - `PUT /<path>` — raw body streamed to nowhere, responds `{ uploaded, size }`
+ *
+ * `size` on the PUT response is what lets the client detect a truncated upload,
+ * since Deno's fetch strips `Content-Length` from streamed bodies.
  */
 export function createMockUploadServer(
 	token: string,
+	options: MockUploadServerOptions = {},
 ) {
-	const uploads: { filename: string; size: number }[] = [];
+	const uploads: { filename: string; size: number; via: "put" | "post" }[] = [];
 
 	const controller = new AbortController();
 	let port = 0;
@@ -87,14 +108,39 @@ export function createMockUploadServer(
 			},
 		},
 		async (req) => {
-			if (req.method !== "POST") {
-				return new Response("Method not allowed", { status: 405 });
-			}
-
-			// check auth
 			const auth = req.headers.get("Authorization");
 			if (auth !== `Bearer ${token}`) {
+				await req.body?.cancel().catch(() => {});
 				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const path = decodeURIComponent(new URL(req.url).pathname).replace(
+				/^\/+/,
+				"",
+			);
+
+			// --- raw-body streaming PUT (the 1.7.0 route) ---
+			if (req.method === "PUT") {
+				if (options.noPutRoute) {
+					await req.body?.cancel().catch(() => {});
+					return new Response("Not found", { status: 404 });
+				}
+				if (!req.body) {
+					return new Response("Missing request body", { status: 400 });
+				}
+				// count the bytes without holding them, like the real server
+				let size = 0;
+				for await (const chunk of req.body) size += chunk.byteLength;
+				uploads.push({ filename: path, size, via: "put" });
+				return Response.json({
+					uploaded: [`/test/${path}`],
+					size: options.forceReportedSize ?? size,
+				});
+			}
+
+			// --- legacy multipart POST ---
+			if (req.method !== "POST") {
+				return new Response("Method not allowed", { status: 405 });
 			}
 
 			try {
@@ -107,6 +153,7 @@ export function createMockUploadServer(
 						uploads.push({
 							filename: value.name,
 							size: bytes.byteLength,
+							via: "post",
 						});
 						uploaded.push(`/test/${value.name}`);
 					}

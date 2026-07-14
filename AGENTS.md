@@ -77,6 +77,7 @@ config.json
             -> re-stat file
             -> adapter.transfer(file, { signal }) [with retries on failure]
             -> tracker.markTransferred() on success
+            -> _writeErrorDump() on failure [full diagnostics -> own file in logDir]
        -> close log file, restore clog hook (reentrancy-safe)
   -> RelayRunResult { status, success, transfers, ... }
   -> [CLI only] if config.notify && !dryRun && !--no-notify:
@@ -106,11 +107,24 @@ config.json
 
 4. **Adapters** (`adapters/`): `RelayAdapter` with `transfer(file, { signal })`
    and optional `check()` preflight returning `CheckResult`.
-   - `static-upload-server`: streams multipart body from disk (no in-memory
-     buffering); sets `Content-Length`; accepts non-JSON 2xx responses;
-     respects external `AbortSignal` in addition to its own timeout.
+   - `static-upload-server`: two wire formats, selected by `destination.mode`.
+     `"put"` (**default**) sends the file as the raw body of
+     `PUT {url}/{relativePath}` — the server streams it to disk, so neither side
+     buffers. Requires upload-server >= 1.7.0; a 404 is turned into an explicit
+     "server too old" error. `"multipart"` is the legacy POST form for older
+     servers and costs the server ~3x the file size in RSS. Both stream from disk.
+     Accepts non-JSON 2xx responses; respects external `AbortSignal` in addition
+     to its own timeout (a timeout is reported as such, not as a bare abort).
+     NOTE: Deno's `fetch` drops `Content-Length` on any streamed body (always
+     chunked), so never rely on the server seeing one. `"put"` responses carry
+     the stored byte count instead, and the adapter fails the transfer on a
+     mismatch — that is the only truncation guard there is.
    - `filesystem`: `Deno.copyFile` with size verification; `verify: "sha256"`
      additionally compares digests (opt-in; buffers for hashing).
+   - On failure both populate `TransferResult.errorDetail` — the verbose dump
+     (request, response status/headers, full body, or stack + `cause` chain).
+     `error` stays short and single-line for the log/email; `errorDetail` holds
+     everything. Never put credentials in either.
 
 5. **Relay** (`relay.ts`): Orchestrator.
    - Per-run log writer hook (synced close, surfaces repeated write errors
@@ -118,6 +132,9 @@ config.json
    - `runPool` schedules transfers at `config.transfer.concurrency` (default 1).
    - `transferWithRetry` re-stats the file before every attempt and retries
      on failure with exponential backoff capped at `maxBackoffMs`.
+   - `_writeErrorDump` writes each failure's `errorDetail` to its own
+     `file-relay-{runTs}-failure-{n}-{slug}.log` in `logDir` and logs the path.
+     Never throws — a failed dump must not escalate a transfer failure.
    - Honours `options.signal` — in-flight transfers are cancelled, no new
      transfers scheduled, and `status: "aborted"` is returned.
 
@@ -159,10 +176,11 @@ To add a new adapter:
 2. Honour `options.signal` (abort promptly on external cancellation)
 3. Provide `check()` so relay can preflight the destination
 4. Stream rather than buffer — assume files can be multi-GB
-5. Add case to `createAdapter()` switch in `src/adapters/adapter.ts`
-6. Add destination type to `DestinationConfig` union in `src/config.ts`
-7. Add validation case in `validateDestination()` in `src/config.ts`
-8. Export the new destination type from `src/mod.ts`
+5. On failure, set both `error` (short, single-line) and `errorDetail` (verbose)
+6. Add case to `createAdapter()` switch in `src/adapters/adapter.ts`
+7. Add destination type to `DestinationConfig` union in `src/config.ts`
+8. Add validation case in `validateDestination()` in `src/config.ts`
+9. Export the new destination type from `src/mod.ts`
 
 ## Critical Conventions
 

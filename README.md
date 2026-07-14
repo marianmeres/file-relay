@@ -151,15 +151,49 @@ anything ending in `-latest.sql.gz`:
 
 ### Destination: `static-upload-server`
 
-Uploads via HTTP POST (multipart/form-data) to a
+Uploads to a
 [@marianmeres/deno-static-upload-server](https://jsr.io/@marianmeres/deno-static-upload-server) instance.
 
-| Field     | Type                     | Default  | Description                       |
-| --------- | ------------------------ | -------- | --------------------------------- |
-| `adapter` | `"static-upload-server"` | required | Adapter type                      |
-| `url`     | `string`                 | required | Server URL including project path |
-| `token`   | `string`                 | required | Bearer token for auth             |
-| `timeout` | `number`                 | `300000` | Request timeout in ms             |
+| Field     | Type                     | Default  | Description                              |
+| --------- | ------------------------ | -------- | ---------------------------------------- |
+| `adapter` | `"static-upload-server"` | required | Adapter type                             |
+| `url`     | `string`                 | required | Server URL including project path        |
+| `token`   | `string`                 | required | Bearer token for auth                    |
+| `timeout` | `number`                 | `300000` | Request timeout in ms                    |
+| `mode`    | `"put" \| "multipart"`   | `"put"`  | Wire format — see below                  |
+
+#### `mode` — and why the default matters for large files
+
+- **`"put"` (default)** — raw-body `PUT {url}/{relativePath}`. The request body *is*
+  the file. Requires **deno-static-upload-server >= 1.7.0**.
+- **`"multipart"`** — legacy `multipart/form-data` POST. Only for servers older than
+  1.7.0, which have no PUT route.
+
+file-relay streams the file off disk in both modes, so *its* memory use is flat either
+way. The difference is what the **server** does. Multipart makes it parse the whole
+upload into memory before writing a byte; PUT lets it stream straight to disk. Measured
+peak RSS on the upload server, same 1.7.0 build:
+
+| Upload   | `mode: "put"` | `mode: "multipart"` |
+| -------- | ------------- | ------------------- |
+| 50 MB    | 105 MB        | 214 MB              |
+| 150 MB   | 159 MB        | 515 MB              |
+| 300 MB   | 235 MB        | 993 MB              |
+
+Multipart costs the server roughly **3× the file size** in RSS, which is enough to kill a
+modest host on a 100 MB+ backup. PUT's overhead is GC churn, not retention — pushing
+1.5 GB through one server process in five sequential 300 MB uploads plateaus at ~230 MB
+peak and settles back to ~207 MB, i.e. it does not accumulate.
+
+If you point `mode: "put"` at a pre-1.7.0 server the PUT route doesn't exist and you'll
+get a 404; the adapter detects that case and says so explicitly rather than leaving you
+to wonder about the URL.
+
+Because Deno's `fetch` strips `Content-Length` from a streamed body (it always sends
+`Transfer-Encoding: chunked`), the server can't run its own short-body check. Instead it
+reports the byte count it stored, and the adapter compares that against the source size —
+a connection that drops mid-upload fails the transfer instead of being silently marked
+as done.
 
 ### Destination: `filesystem`
 
@@ -314,13 +348,44 @@ Each `relay()` call automatically creates a timestamped log file in `logDir`
 (e.g. `file-relay-2026-03-18T12-54-01-927Z.log`). This works from both the CLI
 and the programmatic API. Console output continues normally via `@marianmeres/clog`.
 
+### Failure dumps
+
+A failed transfer is rarely diagnosable from a one-line error, so each failure
+also gets its own **dump file** in `logDir`, named after the run and the file:
+
+```
+file-relay-2026-03-18T12-54-01-927Z.log                       <- the run log
+file-relay-2026-03-18T12-54-01-927Z-failure-1-daily-db.sql.gz.log   <- the failure
+```
+
+The run log stays readable — it carries a one-line error plus a pointer:
+
+```
+[ERROR] [file-relay]   FAILED after 1 attempt(s) in 73.8s: HTTP 500: Internal Server Error
+[ERROR] [file-relay]   Full error detail: /var/log/file-relay/file-relay-...-failure-1-daily-db.sql.gz.log
+```
+
+The dump file carries everything needed to diagnose it: source path, size, mtime,
+attempts, duration, the request as sent (method, URL, `Content-Length`), the
+response status line and **all** response headers, and the **full, untruncated
+response body** — so an HTML error page from a reverse proxy is captured verbatim
+instead of being collapsed into the log. For a transfer that never got a response,
+the dump instead records whether it timed out or was aborted, the configured
+timeout, and the thrown error's stack and `cause` chain.
+
+Credentials are never written to a dump — the `Authorization` header is excluded.
+
+A large HTML error page is truncated to 300 characters in the inline log message
+(the email body would otherwise be unreadable) and capped at 256 KB in the dump
+file. The full body is always in the dump.
+
 ## How It Works
 
 1. **Scan** -- Recursively walk source directory, filter by glob and regex patterns
 2. **Filter** -- Skip files already marked as transferred (via filesystem marker files)
 3. **Transfer** -- Upload/copy each file using the configured adapter
 4. **Track** -- Write a `.transferred.json` marker for each successful transfer
-5. **Log** -- Write detailed per-run log file to `logDir`
+5. **Log** -- Write detailed per-run log file to `logDir`, plus a full diagnostic dump per failed transfer
 6. **Notify** -- (CLI, optional) email the run output via SMTP when `notify` is configured
 
 Each run is idempotent: re-running transfers only new/unprocessed files.

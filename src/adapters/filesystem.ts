@@ -102,12 +102,30 @@ export function createFilesystemAdapter(
 					durationMs: performance.now() - start,
 				};
 			} catch (err) {
+				const elapsed = performance.now() - start;
 				return {
 					success: false,
 					sourceFile: file,
 					destination: destPath,
 					error: err instanceof Error ? err.message : String(err),
-					durationMs: performance.now() - start,
+					errorDetail: [
+						`Copy:`,
+						`  ${file.path}`,
+						`  -> ${destPath}`,
+						`  Source size: ${file.size} bytes`,
+						`  Verify mode: ${verify}`,
+						`  Elapsed: ${elapsed.toFixed(0)}ms`,
+						`  Aborted: ${signal?.aborted ? "yes" : "no"}`,
+						``,
+						`Thrown error:`,
+						err instanceof Error
+							? `  ${err.name}: ${err.message}\n${
+								(err.stack ?? "").split("\n").slice(1)
+									.map((l) => `  ${l.trim()}`).join("\n")
+							}`
+							: `  ${String(err)}`,
+					].join("\n"),
+					durationMs: elapsed,
 				};
 			}
 		},

@@ -229,9 +229,13 @@ export async function relay(
 	const defaultLog = createClog("file-relay") as unknown as ClogFn;
 	const log: ClogFn | Clog = options?.clog ?? defaultLog;
 
+	// Shared by the run log and any failure dumps, so they sort together and a
+	// dump is trivially traceable back to the run that produced it.
+	const runTs = new Date().toISOString().replace(/[:.]/g, "-");
+
 	// Per-run log file writer. Attached as a local hook; never touches the
 	// global clog hook — so concurrent relay() calls don't interfere.
-	const logWriter = await _initLogFileWriter(config.logDir);
+	const logWriter = await _initLogFileWriter(config.logDir, runTs);
 	const prevHook = createClog.global.hook;
 	if (logWriter) {
 		createClog.global.hook = (data) => {
@@ -367,6 +371,10 @@ export async function relay(
 		log(`Concurrency: ${concurrency}`);
 	}
 
+	// Numbers the failure dump files of this run. Safe to bump from concurrent
+	// lanes — the pool workers interleave, they don't run in parallel threads.
+	let failureSeq = 0;
+
 	const transfers = await runPool(
 		toTransfer,
 		concurrency,
@@ -395,7 +403,21 @@ export async function relay(
 					destinationInfo: result.destination,
 				});
 			} else {
-				log.error(`  FAILED: ${result.error}`);
+				log.error(
+					`  FAILED after ${result.attempts ?? 1} attempt(s)` +
+						` in ${((result.durationMs ?? 0) / 1000).toFixed(1)}s:` +
+						` ${result.error}`,
+				);
+				const dump = await _writeErrorDump(
+					config.logDir,
+					runTs,
+					++failureSeq,
+					adapter.name,
+					result,
+				);
+				if (dump) {
+					log.error(`  Full error detail: ${dump}`);
+				}
 			}
 			return result;
 		},
@@ -439,20 +461,79 @@ export async function relay(
 }
 
 // -----------------------------------------------------------------------------
+// Failure dumps
+// -----------------------------------------------------------------------------
+
+/** Make a relative path safe to embed in a filename. */
+function _slugify(relativePath: string): string {
+	return relativePath
+		.replace(/[^a-zA-Z0-9._-]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 80) || "file";
+}
+
+/**
+ * Write the full diagnostic dump for one failed transfer to its own file in
+ * `logDir`, keeping the run log itself readable. Returns the path written, or
+ * `null` if the dump could not be written (never throws — a failed dump must
+ * not turn a transfer failure into a crash).
+ */
+async function _writeErrorDump(
+	logDir: string,
+	runTs: string,
+	seq: number,
+	adapterName: string,
+	result: TransferResult,
+): Promise<string | null> {
+	const file = result.sourceFile;
+	const path = join(
+		logDir,
+		`file-relay-${runTs}-failure-${seq}-${_slugify(file.relativePath)}.log`,
+	);
+
+	const content = [
+		"=".repeat(78),
+		`file-relay transfer failure`,
+		"=".repeat(78),
+		`Time:        ${new Date().toISOString()}`,
+		`Adapter:     ${adapterName}`,
+		`Source:      ${file.path}`,
+		`Relative:    ${file.relativePath}`,
+		`Size:        ${file.size} bytes (${formatBytes(file.size)})`,
+		`Modified:    ${file.mtime?.toISOString?.() ?? "(unknown)"}`,
+		`Destination: ${result.destination}`,
+		`Attempts:    ${result.attempts ?? 1}`,
+		`Duration:    ${result.durationMs?.toFixed(0) ?? "?"}ms`,
+		`Error:       ${result.error ?? "(none)"}`,
+		"",
+		"-".repeat(78),
+		result.errorDetail ?? "(adapter provided no further detail)",
+		"",
+	].join("\n");
+
+	try {
+		await ensureDir(logDir);
+		await Deno.writeTextFile(path, content);
+		return path;
+	} catch {
+		return null;
+	}
+}
+
+// -----------------------------------------------------------------------------
 // Log file writer
 // -----------------------------------------------------------------------------
 
 const _encoder = new TextEncoder();
 
-async function _initLogFileWriter(logDir: string) {
+async function _initLogFileWriter(logDir: string, runTs: string) {
 	try {
 		await ensureDir(logDir);
 	} catch {
 		return null;
 	}
 
-	const ts = new Date().toISOString().replace(/[:.]/g, "-");
-	const logFile = join(logDir, `file-relay-${ts}.log`);
+	const logFile = join(logDir, `file-relay-${runTs}.log`);
 	let fh: Deno.FsFile;
 	try {
 		fh = Deno.openSync(logFile, {

@@ -24,6 +24,7 @@ export type {
 	NotifyTrigger,
 	RetryConfig,
 	SourceConfig,
+	StaticUploadMode,
 	StaticUploadServerDestination,
 	TransferConfig,
 } from "./config.ts";

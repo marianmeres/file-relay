@@ -227,13 +227,27 @@ type DestinationConfig =
 ### `StaticUploadServerDestination`
 
 ```typescript
+type StaticUploadMode = "put" | "multipart";
+
 interface StaticUploadServerDestination {
 	adapter: "static-upload-server";
 	url: string; // Server URL with project path
 	token: string; // Bearer token (supports ${ENV_VAR})
 	timeout?: number; // Request timeout in ms. Default: 300000
+	mode?: StaticUploadMode; // Wire format. Default: "put"
 }
 ```
+
+`mode: "put"` (the default) uploads the file as the raw body of
+`PUT {url}/{relativePath}`, which the server streams straight to disk — required for
+large files, and requires deno-static-upload-server >= 1.7.0. `mode: "multipart"` is the
+legacy `multipart/form-data` POST, which makes the server buffer the entire file in
+memory (~3x the file size in RSS); use it only against a server older than 1.7.0. See the
+[README](./README.md#mode--and-why-the-default-matters-for-large-files) for measurements.
+
+In `"put"` mode a successful response reports the number of bytes the server stored;
+the adapter fails the transfer if that doesn't match the source size, so an upload
+truncated by a dropped connection is retried rather than marked as transferred.
 
 ---
 
@@ -350,12 +364,22 @@ interface TransferResult {
 	success: boolean;
 	sourceFile: FileInfo;
 	destination: string; // Human-readable description
-	error?: string; // Error message if failed
+	error?: string; // Short, single-line error message if failed
+	errorDetail?: string; // Verbose multi-line diagnostic dump if failed
 	bytesTransferred?: number;
 	durationMs?: number;
 	attempts?: number; // Set when retries were used
 }
 ```
+
+`error` is kept short and single-line (a long HTTP error body is truncated to 300
+chars) because it goes into the run log and the notification email.
+
+`errorDetail` is the unabridged version: request as sent, response status line and
+all response headers, and the full response body — or, when no response arrived,
+whether it timed out vs. was aborted plus the thrown error's stack and `cause`
+chain. `relay()` writes it to a per-failure dump file in `logDir`; see the
+[Failure dumps](./README.md#failure-dumps) section. Credentials are never included.
 
 ---
 

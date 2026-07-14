@@ -13,6 +13,15 @@ export interface TransferResult {
 	destination: string;
 	/** Error message if the transfer failed. */
 	error?: string;
+	/**
+	 * Verbose, multi-line diagnostic dump for a failed transfer: the request as
+	 * sent, the response status/headers, the full (untruncated) response body,
+	 * or the thrown error's name/stack/cause. Intended to be written to a
+	 * separate file rather than inlined into the run log — see `logDir`.
+	 *
+	 * Never contains credentials (the `Authorization` header is not dumped).
+	 */
+	errorDetail?: string;
 	/** Number of bytes transferred. */
 	bytesTransferred?: number;
 	/** Transfer duration in milliseconds. */

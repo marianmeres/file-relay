@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { createClog, createNoopClog } from "@marianmeres/clog";
-import { relay } from "../src/relay.ts";
+import { type ClogFn, relay } from "../src/relay.ts";
 import { cleanup, createFile, createTempDir } from "./_helpers.ts";
 import { join } from "@std/path";
 
@@ -342,12 +342,11 @@ Deno.test("relay - retries a flaky upload and eventually succeeds", async () => 
 				await req.body?.cancel();
 				return new Response("temporary", { status: 503 });
 			}
-			const fd = await req.formData();
-			const names: string[] = [];
-			for (const [, v] of fd.entries()) {
-				if (v instanceof File) names.push(`/test/${v.name}`);
-			}
-			return Response.json({ uploaded: names });
+			// raw-body PUT (the adapter's default mode), as the real 1.7.0 server
+			let size = 0;
+			for await (const chunk of req.body!) size += chunk.byteLength;
+			const name = new URL(req.url).pathname.replace(/^\/+/, "");
+			return Response.json({ uploaded: [`/test/${name}`], size });
 		},
 	);
 	await new Promise((r) => setTimeout(r, 100));
@@ -375,6 +374,83 @@ Deno.test("relay - retries a flaky upload and eventually succeeds", async () => 
 		assertEquals(result.transfers.length, 1);
 		assertEquals(result.transfers[0].success, true);
 		assertEquals(result.transfers[0].attempts, 3);
+	} finally {
+		controller.abort();
+		await server.finished.catch(() => {});
+		await cleanup(srcDir, logDir, trackDir);
+	}
+});
+
+Deno.test("relay - writes a failure dump file next to the run log", async () => {
+	const srcDir = await createTempDir();
+	const logDir = await createTempDir();
+	const trackDir = await createTempDir();
+
+	const html = `<html><body>${"boom ".repeat(500)}</body></html>`;
+	const controller = new AbortController();
+	let port = 0;
+	const server = Deno.serve(
+		{
+			signal: controller.signal,
+			port: 0,
+			onListen: (a) => {
+				port = a.port;
+			},
+		},
+		async (req) => {
+			await req.arrayBuffer().catch(() => {});
+			return new Response(html, { status: 500 });
+		},
+	);
+	await new Promise((r) => setTimeout(r, 100));
+
+	// capture what an operator would actually see in the run log / email body
+	const logged: string[] = [];
+	const push = (...a: unknown[]) => void logged.push(a.join(" "));
+	const capture: ClogFn = Object.assign(push, {
+		debug: () => {},
+		warn: push,
+		error: push,
+	});
+
+	try {
+		await createFile(srcDir, "daily/backup.sql.gz", "data");
+		const result = await relay(
+			{
+				logDir,
+				trackDir,
+				source: { dir: srcDir, glob: "**/*.sql.gz" },
+				destination: {
+					adapter: "static-upload-server",
+					url: `http://localhost:${port}`,
+					token: "t",
+					timeout: 5000,
+				},
+			},
+			{ clog: capture },
+		);
+		assertEquals(result.status, "failed");
+
+		const entries: string[] = [];
+		for await (const e of Deno.readDir(logDir)) entries.push(e.name);
+
+		const dumps = entries.filter((n) => n.includes("-failure-"));
+		assertEquals(dumps.length, 1);
+		assertEquals(dumps[0].endsWith("-daily-backup.sql.gz.log"), true);
+
+		const dump = await Deno.readTextFile(join(logDir, dumps[0]));
+		assertEquals(dump.includes(html), true);
+		assertEquals(dump.includes("Adapter:     static-upload-server"), true);
+		assertEquals(dump.includes("daily/backup.sql.gz"), true);
+
+		// the run log points at the dump instead of inlining the HTML
+		const logText = logged.join("\n");
+		assertEquals(
+			logText.includes(`Full error detail: ${join(logDir, dumps[0])}`),
+			true,
+		);
+		assertEquals(logText.includes("FAILED after 1 attempt(s)"), true);
+		assertEquals(logText.includes(html), false);
 	} finally {
 		controller.abort();
 		await server.finished.catch(() => {});

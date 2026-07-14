@@ -32,6 +32,21 @@ export interface SourceConfig {
 	followSymlinks?: boolean;
 }
 
+/**
+ * How the file is framed on the wire when talking to a
+ * `@marianmeres/deno-static-upload-server` instance.
+ *
+ * - `"put"` — raw-body `PUT /:projectId/<relativePath>`. The request body *is*
+ *   the file. The server streams it straight to disk, so its memory use is
+ *   constant regardless of file size. **This is the default**, and the only
+ *   sane choice for large files. Requires server >= 1.7.0.
+ * - `"multipart"` — legacy `multipart/form-data` POST. The server parses the
+ *   whole body into memory before writing it (roughly 3.5x the file size in
+ *   RSS), so a 100 MB upload can take down a small host. Only use this against
+ *   a server older than 1.7.0, which has no PUT route.
+ */
+export type StaticUploadMode = "put" | "multipart";
+
 /** Destination config for uploading via HTTP to a deno-static-upload-server instance. */
 export interface StaticUploadServerDestination {
 	/** Adapter discriminator. */
@@ -42,6 +57,11 @@ export interface StaticUploadServerDestination {
 	token: string;
 	/** Request timeout in ms. Default: 300000 (5 min) */
 	timeout?: number;
+	/**
+	 * Wire format. Default: `"put"`. See {@linkcode StaticUploadMode} — only set
+	 * this to `"multipart"` for an upload server older than 1.7.0.
+	 */
+	mode?: StaticUploadMode;
 }
 
 /** Destination config for raw filesystem copy to a local/mounted directory. */
@@ -330,11 +350,19 @@ function validateDestination(
 					`"destination.timeout" must be a positive number`,
 				);
 			}
+			if (
+				d.mode !== undefined && d.mode !== "put" && d.mode !== "multipart"
+			) {
+				throw new Error(
+					`"destination.mode" must be "put" or "multipart"`,
+				);
+			}
 			return {
 				adapter: "static-upload-server",
 				url: d.url as string,
 				token: d.token as string,
 				timeout: (d.timeout as number) ?? 300_000,
+				mode: (d.mode as StaticUploadMode) ?? "put",
 			};
 		}
 		case "filesystem": {
