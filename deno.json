@@ -10,7 +10,7 @@
     "example": "deno run -A --env-file=example/.env example/file-relay-example.ts",
     "test": "deno test -A",
     "test:watch": "deno test -A --watch",
-    "release": "deno run -A jsr:@marianmeres/deno-release",
+    "release": "deno run -A jsr:@marianmeres/release",
     "publish": "deno publish",
     "rp": "deno task release -y && deno task publish",
     "rpm": "deno task release minor -y && deno task publish"
