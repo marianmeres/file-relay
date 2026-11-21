@@ -21,8 +21,9 @@ npx @marianmeres/file-relay config.json  # or run it without installing
 deno run -A jsr:@marianmeres/file-relay config.json
 deno add jsr:@marianmeres/file-relay
 
-# Scaffold a new relay instance interactively (JSR only, writes a Deno instance)
-deno run -A jsr:@marianmeres/file-relay/install <dirname>
+# Scaffold a new relay instance interactively (it runs on Node)
+npx -p @marianmeres/file-relay file-relay-install <dirname>
+deno run -A jsr:@marianmeres/file-relay/install <dirname>   # the same, from JSR
 ```
 
 Both registries ship the same code: Node runs it from npm, Deno from JSR.
@@ -34,19 +35,23 @@ Both registries ship the same code: Node runs it from npm, Deno from JSR.
 The fastest way to set up a new relay:
 
 ```bash
-deno run -A jsr:@marianmeres/file-relay/install my-backup
+npx -p @marianmeres/file-relay file-relay-install my-backup
 ```
 
-This interactively prompts for source directory and adapter type, then creates a
-ready-to-use directory with `config.json`, `deno.json`, `.env.example`, `log/`,
-and `track/`, run by Deno. (On Node, set the instance up by hand as in
-[Manual Setup](#manual-setup).) After that:
+This interactively prompts for source directory, adapter type and optional email
+notifications, then creates a ready-to-use directory with `config.json`,
+`.env.example`, `log/`, `track/`, and a `package.json` that depends on
+`@marianmeres/file-relay` and runs it on Node. After that:
 
 ```bash
-cd my-backup
+cd my-backup && npm install
 cp .env.example .env && $EDITOR .env   # fill in credentials
-# setup cron: deno task backup
+npm run backup                         # what cron runs, from this directory
 ```
+
+`npm run backup` is
+`node --env-file-if-exists=.env node_modules/@marianmeres/file-relay/dist/bin.js config.json`:
+Node loads `.env` itself, and the bin's JS file works under npm and pnpm alike.
 
 ### Manual Setup
 
@@ -451,6 +456,12 @@ wording only:
   streamed)` instead of naming Deno.
 - A `filesystem` preflight that fails because the destination exists as a file
   reports the OS error (`EEXIST: file already exists, mkdir ...`).
+
+One thing changed on purpose: the `install` scaffolder (now also the npm
+`file-relay-install` bin) writes a **Node** instance, a `package.json` with an
+`npm run backup` script, instead of a `deno.json` with `deno task backup`. Existing
+Deno instances are untouched and keep running from JSR. Piped answers now work too
+(Deno's `prompt()` read nothing from a non-terminal stdin).
 
 ## Upgrading to 1.3
 

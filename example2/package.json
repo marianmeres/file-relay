@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "backup": "node --env-file-if-exists=.env node_modules/@marianmeres/file-relay/dist/bin.js config.json"
+  },
+  "dependencies": {
+    "@marianmeres/file-relay": "^1.6.0"
+  }
+}

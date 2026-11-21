@@ -7,9 +7,9 @@
  * it, then on Node:
  *
  *  1. checks the installed package.json (the `.` and `./mod` exports and their
- *     files, the `file-relay` bin, the runtime dependencies, `engines.node`) and
- *     that the tarball carries `dist/` without the JSR-only install scaffolder and
- *     without any repo-only directory;
+ *     files, the `file-relay` and `file-relay-install` bins, the runtime
+ *     dependencies, `engines.node`) and that the tarball carries `dist/` without
+ *     any repo-only directory;
  *  2. runs the installed `file-relay` bin: `--version`, and a filesystem relay - the
  *     suite runs `src/*.ts`, so only here does the CLI run from `dist/*.js`, through
  *     npm's bin link;
@@ -17,7 +17,10 @@
  *     notification is sent after the relay, through the dynamically imported
  *     `@marianmeres/send-email`, so this proves that import resolves from the
  *     installed package; the send fails, which must not change the exit code;
- *  4. imports the library through both specifiers and runs a dry run.
+ *  4. imports the library through both specifiers and runs a dry run;
+ *  5. scaffolds an instance with `file-relay-install` (piped answers), installs the
+ *     tarball into it and runs its `npm run backup`: the generated script, against
+ *     the package as npm lays it out.
  *
  * Repo tool, Node only (nothing here is shipped).
  */
@@ -41,6 +44,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PKG = "@marianmeres/file-relay";
 const BIN = "file-relay";
+const INSTALL_BIN = "file-relay-install";
 const DEPS = [
 	"@marianmeres/clog",
 	"@marianmeres/parse-boolean",
@@ -130,8 +134,10 @@ function checkInstalledManifest(dir: string): Manifest {
 			);
 		}
 	}
-	const bin = pkg.bin?.[BIN];
-	check(bin && existsSync(join(dir, bin)), `bin "${BIN}" does not exist: ${bin}`);
+	for (const name of [BIN, INSTALL_BIN]) {
+		const bin = pkg.bin?.[name];
+		check(bin && existsSync(join(dir, bin)), `bin "${name}" does not exist: ${bin}`);
+	}
 	for (const dep of DEPS) {
 		check(
 			typeof pkg.dependencies?.[dep] === "string",
@@ -139,15 +145,11 @@ function checkInstalledManifest(dir: string): Manifest {
 		);
 	}
 	check(typeof pkg.engines?.node === "string", "engines.node missing");
-	check(
-		!existsSync(join(dir, "dist", "install.js")),
-		"the tarball carries the JSR-only install.js",
-	);
 	for (const name of REPO_ONLY) {
 		check(!existsSync(join(dir, name)), `the tarball carries "${name}/"`);
 	}
 	console.log(
-		`smoke: ${pkg.name}@${pkg.version} - bin ${BIN}, ` +
+		`smoke: ${pkg.name}@${pkg.version} - bins ${BIN}, ${INSTALL_BIN}, ` +
 			`deps ${DEPS.map((d) => `${d} ${pkg.dependencies?.[d]}`).join(", ")}, ` +
 			`engines.node ${pkg.engines?.node}`,
 	);
@@ -241,6 +243,36 @@ try {
 
 	writeFileSync(join(project, "library.mjs"), LIBRARY);
 	process.stdout.write(run(process.execPath, ["library.mjs"], project));
+
+	// Step 5: source dir, adapter, destination dir, notify
+	const installBin = join(project, "node_modules", ".bin", INSTALL_BIN);
+	console.log(`smoke: $ ${installBin} instance`);
+	const scaffolded = spawnSync(installBin, ["instance"], {
+		cwd: project,
+		encoding: "utf8",
+		input: "./source\nfilesystem\n./dest\nno\n",
+	});
+	check(scaffolded.status === 0, `file-relay-install exited ${scaffolded.status}`);
+	const instance = join(project, "instance");
+	mkdirSync(join(instance, "source"));
+	writeFileSync(join(instance, "source", "dump.sql.gz"), "instance");
+	run(
+		"npm",
+		[
+			"install",
+			"--no-audit",
+			"--no-fund",
+			"--loglevel=error",
+			join(packDir, tarball),
+		],
+		instance,
+	);
+	run("npm", ["run", "--silent", "backup"], instance);
+	check(
+		readFileSync(join(instance, "dest", "dump.sql.gz"), "utf8") === "instance",
+		"the scaffolded instance's `npm run backup` did not relay source/dump.sql.gz",
+	);
+	console.log("smoke: a scaffolded instance installs and runs `npm run backup`");
 	console.log("smoke: OK");
 } finally {
 	rmSync(project, { recursive: true, force: true });

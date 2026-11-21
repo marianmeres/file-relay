@@ -1,7 +1,5 @@
 {
 	// `pnpm run build`: emits src/ to dist/ (ESM + .d.ts), which is all that gets published.
-	// install.ts is the JSR-only scaffolder (`jsr:@marianmeres/file-relay/install`); it
-	// writes a Deno instance, so npm does not ship it.
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
 		"noEmit": false,
@@ -9,6 +7,5 @@
 		"outDir": "dist",
 		"declaration": true
 	},
-	"include": ["src"],
-	"exclude": ["src/install.ts"]
+	"include": ["src"]
 }

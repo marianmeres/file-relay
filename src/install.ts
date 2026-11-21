@@ -1,33 +1,51 @@
 /**
  * @module
  *
- * `file-relay install <dirname>`: scaffolds a new file-relay instance directory
- * (config, env template, task runner, `log/` and `track/`) after a few prompts.
- * Run directly as the JSR `./install` export:
+ * The `file-relay-install` scaffolder: after a few prompts, writes a new file-relay
+ * instance directory — `config.json`, `.env.example`, `log/`, `track/`, and a
+ * `package.json` that depends on `@marianmeres/file-relay` and runs it on Node
+ * (`npm run backup`). From npm it is the `file-relay-install` bin
+ * (`bin-install.ts`); from JSR, this module run directly:
  *
  * ```bash
+ * npx -p @marianmeres/file-relay file-relay-install <dirname>
  * deno run -A jsr:@marianmeres/file-relay/install <dirname>
  * ```
+ *
+ * Either way the instance it writes runs on Node.
  */
 
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline";
+import { VERSION } from "./version.ts";
+
+/**
+ * The instance's `npm run backup`. Runs the installed bin's JS file directly, so
+ * Node's own `--env-file` loads `.env` (if there is one; a filesystem-only setup
+ * needs none) — the `node_modules/.bin` entry is a shell shim under pnpm.
+ */
+const BACKUP_SCRIPT =
+	"node --env-file-if-exists=.env node_modules/@marianmeres/file-relay/dist/bin.js config.json";
 
 function printUsage() {
 	console.log(
 		`
 file-relay install
 
-Scaffold a new file-relay directory with config, env template, and task runner.
+Scaffold a new file-relay directory with config, env template, and package.json.
 
 Usage:
-  deno run -A jsr:@marianmeres/file-relay/install <dirname>
+  file-relay-install <dirname>
 
-After install:
-  1. Edit .env with your credentials
-  2. Setup cron: deno task backup
+  Without installing: npx -p @marianmeres/file-relay file-relay-install <dirname>
+  On Deno (JSR):      deno run -A jsr:@marianmeres/file-relay/install <dirname>
+
+After install (the instance runs on Node >= 24.12):
+  1. npm install
+  2. Edit .env with your credentials
+  3. Setup cron: npm run backup
 `.trim(),
 	);
 }
@@ -202,14 +220,14 @@ async function scaffold(rl: LineReader, dirname: string, targetDir: string) {
 		"\t",
 	);
 
-	const denoJson = JSON.stringify(
+	const packageJson = JSON.stringify(
 		{
-			tasks: {
-				backup: "deno run -A --env-file=.env jsr:@marianmeres/file-relay config.json",
-			},
+			private: true,
+			scripts: { backup: BACKUP_SCRIPT },
+			dependencies: { "@marianmeres/file-relay": `^${VERSION}` },
 		},
 		null,
-		"\t",
+		2, // npm's own package.json indent
 	);
 
 	// Create directory structure
@@ -217,16 +235,16 @@ async function scaffold(rl: LineReader, dirname: string, targetDir: string) {
 	await mkdir(resolve(targetDir, "track"), { recursive: true });
 
 	await writeFile(resolve(targetDir, "config.json"), configJson + "\n");
-	await writeFile(resolve(targetDir, "deno.json"), denoJson + "\n");
+	await writeFile(resolve(targetDir, "package.json"), packageJson + "\n");
 	await writeFile(resolve(targetDir, ".env.example"), envExample);
 	await writeFile(resolve(targetDir, "log", ".gitkeep"), "");
 	await writeFile(resolve(targetDir, "track", ".gitkeep"), "");
 
 	console.log(`\nCreated file-relay instance at: ${targetDir}`);
 	console.log(`\nNext steps:`);
-	console.log(`  1. cd ${dirname}`);
+	console.log(`  1. cd ${dirname} && npm install`);
 	console.log(`  2. cp .env.example .env && edit .env`);
-	console.log(`  3. Setup cron: deno task backup`);
+	console.log(`  3. Setup cron: cd ${targetDir} && npm run backup`);
 }
 
 // Run when this module is the program entrypoint — the JSR `./install` export, as

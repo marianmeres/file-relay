@@ -14,7 +14,8 @@ registry_jsr: "https://jsr.io/@marianmeres/file-relay"
   to npm (built `dist/`) and JSR (the `.ts` source, for Deno users)
 - **Run**: `file-relay <config.json>` (npm bin) /
   `deno run -A jsr:@marianmeres/file-relay <config.json>` (JSR)
-- **Install** (scaffolder, JSR only): `deno run -A jsr:@marianmeres/file-relay/install <dirname>`
+- **Install** (scaffolder; writes a Node instance): `file-relay-install <dirname>` (npm bin) /
+  `deno run -A jsr:@marianmeres/file-relay/install <dirname>` (JSR)
 - **Test**: `pnpm test` (node:test); `pnpm run test:deno` (same suite on Deno)
 - **Type check**: `pnpm run typecheck` (`tsc --noEmit`, the type gate: Node never checks)
 - **Lint / format**: `pnpm run lint` / `pnpm run format` (Biome)
@@ -36,7 +37,8 @@ src/
   bin.ts                          # npm `file-relay` bin: runs runCli unconditionally
   version.ts                      # VERSION constant, synced from package.json on release
   mod.ts                          # Programmatic API (JSR "./mod"; npm "." and "./mod")
-  install.ts                      # Scaffolding CLI (JSR "./install" only; not built for npm)
+  install.ts                      # Scaffolder: runInstall(args); JSR "./install" (runs when main)
+  bin-install.ts                  # npm `file-relay-install` bin: runs runInstall unconditionally
   config.ts                       # Config types, loading, validation, env interpolation
   file-finder.ts                  # Recursive dir scan with glob/exclude + regex match/ignore filtering
   _glob-to-regexp.ts              # globToRegExp vendored from @std/path 1.1.5 (no @std dependency)
@@ -50,6 +52,7 @@ src/
 tests/
   _helpers.ts                     # Test utilities (temp dirs, mock upload server, serve())
   cli.e2e.test.ts                 # Spawns the CLI (CLI_RUNTIME=deno: the JSR entry on Deno)
+  install.e2e.test.ts             # Spawns the scaffolder with piped answers (same switch)
   version.test.ts                 # src/version.ts == package.json version
   config.test.ts                  # Config validation tests (incl. notify block)
   file-finder.test.ts             # File discovery tests (incl. symlink cycle)
@@ -67,13 +70,13 @@ example/
   log/                            # Per-run log files (gitignored)
   track/                          # Transfer markers (gitignored)
 scripts/
-  smoke-npm.ts                    # Packs + npm-installs the tarball, runs bin and library
+  smoke-npm.ts                    # Packs + npm-installs the tarball, runs bins and library
   sync-version.ts                 # release --before-commit: package.json -> src/version.ts
-example2/                         # A scaffolded (Deno) instance, as install writes it
+example2/                         # A scaffolded (Node) instance, as install writes it
 package.json                      # Manifest of record (npm): scripts, deps, bin, exports
 jsr.json                          # JSR manifest: exports, jsr: import map, publish file set
 tsconfig.json                     # Type gate (src, tests, scripts, example)
-tsconfig.build.json               # npm build: src -> dist (minus install.ts)
+tsconfig.build.json               # npm build: src -> dist
 biome.json                        # Format + lint
 ```
 
@@ -164,11 +167,15 @@ config.json
    after the run, hands it to `notify.ts` — dynamically imported so the SMTP
    dependency loads only when a mail is actually sent.
 
-7. **Install** (`install.ts`): Scaffolding CLI (`runInstall(args)`; prompts via
-   node:readline). Prompts for source dir, adapter type, and optional email
-   notifications, creating a ready-to-use directory with config.json, deno.json,
-   .env.example, log/, track/. JSR only: it writes a Deno instance, so the npm
-   build excludes it.
+7. **Install** (`install.ts`): Scaffolding CLI (`runInstall(args)`; reads one
+   stdin line per prompt through a queued node:readline reader, so piped answers
+   work). Prompts for source dir, adapter type, and optional email
+   notifications, creating a ready-to-use directory with config.json,
+   .env.example, log/, track/ and a package.json depending on
+   `@marianmeres/file-relay@^VERSION` whose `npm run backup` is
+   `node --env-file-if-exists=.env node_modules/@marianmeres/file-relay/dist/bin.js config.json`
+   (the bin's JS file: `.bin/` holds a shell shim under pnpm). The instance runs
+   on Node whichever runtime ran the scaffolder.
 
 8. **Notify** (`notify.ts`): CLI-only. `shouldNotify()` (trigger gate),
    `buildNotificationMessage()` (pure subject/body builder — unit-tested), and
