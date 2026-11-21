@@ -1,5 +1,5 @@
-import { dirname, join } from "@std/path";
-import { ensureDir, walk } from "@std/fs";
+import { mkdir, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 /** Metadata stored in a transfer marker file. */
 export interface TransferMeta {
@@ -34,6 +34,19 @@ function markerPath(trackDir: string, relativePath: string): string {
 }
 
 /**
+ * Every regular file under `dir`, recursively. Symlinks are neither followed nor
+ * yielded (what `@std/fs` `walk()` did with `includeSymlinks: false`); an
+ * unreadable `dir` throws.
+ */
+async function* walkFiles(dir: string): AsyncGenerator<string> {
+	for (const entry of await readdir(dir, { withFileTypes: true })) {
+		const path = join(dir, entry.name);
+		if (entry.isDirectory()) yield* walkFiles(path);
+		else if (entry.isFile()) yield path;
+	}
+}
+
+/**
  * Create a filesystem-based tracker for deduplication.
  *
  * Stores `{relativePath}.transferred.json` marker files under `trackDir`,
@@ -43,10 +56,10 @@ export function createTracker(trackDir: string): Tracker {
 	return {
 		async isTransferred(relativePath: string): Promise<boolean> {
 			try {
-				const stat = await Deno.stat(
+				const info = await stat(
 					markerPath(trackDir, relativePath),
 				);
-				return stat.isFile;
+				return info.isFile();
 			} catch {
 				return false;
 			}
@@ -57,28 +70,22 @@ export function createTracker(trackDir: string): Tracker {
 			meta: TransferMeta,
 		): Promise<void> {
 			const mp = markerPath(trackDir, relativePath);
-			await ensureDir(dirname(mp));
+			await mkdir(dirname(mp), { recursive: true });
 			const content = JSON.stringify(meta, null, "\t");
 
 			// atomic write: temp file + rename
 			const tmp = `${mp}.tmp`;
-			await Deno.writeTextFile(tmp, content);
-			await Deno.rename(tmp, mp);
+			await writeFile(tmp, content);
+			await rename(tmp, mp);
 		},
 
 		async sweepTmp(): Promise<number> {
 			let removed = 0;
 			try {
-				for await (
-					const entry of walk(trackDir, {
-						includeDirs: false,
-						includeFiles: true,
-						includeSymlinks: false,
-						match: [/\.transferred\.json\.tmp$/],
-					})
-				) {
+				for await (const path of walkFiles(trackDir)) {
+					if (!/\.transferred\.json\.tmp$/.test(path)) continue;
 					try {
-						await Deno.remove(entry.path);
+						await unlink(path);
 						removed++;
 					} catch {
 						// best-effort; ignore

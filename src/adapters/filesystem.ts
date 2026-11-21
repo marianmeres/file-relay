@@ -1,5 +1,5 @@
-import { dirname, join } from "@std/path";
-import { ensureDir } from "@std/fs";
+import { copyFile, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { FileInfo } from "../file-finder.ts";
 import type { FilesystemCopyDestination } from "../config.ts";
 import type {
@@ -13,7 +13,9 @@ async function sha256OfFile(path: string): Promise<string> {
 	// WebCrypto digest() doesn't support streams, so this buffers the file.
 	// Opt-in path (`verify: "sha256"`) — the default "size" mode streams via
 	// copyFile and is safe for arbitrarily large files.
-	const data = await Deno.readFile(path);
+	// readFile's Buffer is backed by a plain ArrayBuffer (never a shared one); the
+	// cast says so for type checkers whose BufferSource excludes ArrayBufferLike.
+	const data = (await readFile(path)) as Uint8Array<ArrayBuffer>;
 	const digest = await crypto.subtle.digest("SHA-256", data);
 	return [...new Uint8Array(digest)]
 		.map((b) => b.toString(16).padStart(2, "0"))
@@ -34,12 +36,12 @@ export function createFilesystemAdapter(
 
 		async check(): Promise<CheckResult> {
 			try {
-				await ensureDir(config.dir);
+				await mkdir(config.dir, { recursive: true });
 				// try writing a probe file to verify we actually have write
-				// permission (ensureDir is happy if the dir already exists).
+				// permission (mkdir is happy if the dir already exists).
 				const probe = join(config.dir, `.file-relay-probe-${Date.now()}`);
-				await Deno.writeTextFile(probe, "");
-				await Deno.remove(probe);
+				await writeFile(probe, "");
+				await unlink(probe);
 				return { ok: true };
 			} catch (err) {
 				return {
@@ -59,12 +61,12 @@ export function createFilesystemAdapter(
 
 			try {
 				if (signal?.aborted) throw signal.reason ?? new Error("Aborted");
-				await ensureDir(dirname(destPath));
+				await mkdir(dirname(destPath), { recursive: true });
 				if (signal?.aborted) throw signal.reason ?? new Error("Aborted");
-				await Deno.copyFile(file.path, destPath);
+				await copyFile(file.path, destPath);
 
 				// verify copy size
-				const destStat = await Deno.stat(destPath);
+				const destStat = await stat(destPath);
 				if (destStat.size !== file.size) {
 					return {
 						success: false,

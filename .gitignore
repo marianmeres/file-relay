@@ -1,14 +1,31 @@
 node_modules/
-.idea
-.DS_Store
-.npm-dist
-tmp/*
+dist/
+*.tsbuildinfo
 
-example/.env
+.env
+.env.*
+!.env.example
+
+# pnpm's lockfile is the one committed; another installer must not add a second
+package-lock.json
+npm-shrinkwrap.json
+bun.lock
+bun.lockb
+yarn.lock
+deno.lock
+
+tmp/*
+!tmp/.gitkeep
+*.log
+
+.DS_Store
+.idea/
+.vscode/
+.claude/settings.local.json
+
+# local example runs
 example/source/
 example/log/
 example/track/
-
-example2/.env
 example2/log/*
 example2/track/*

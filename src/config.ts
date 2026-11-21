@@ -1,4 +1,6 @@
-import { dirname, isAbsolute, resolve } from "@std/path";
+import { readFile } from "node:fs/promises";
+import { dirname, isAbsolute, resolve } from "node:path";
+import process from "node:process";
 import { parseBoolean } from "@marianmeres/parse-boolean";
 
 // -----------------------------------------------------------------------------
@@ -205,7 +207,7 @@ const ENV_VAR_RE = /\$\{([^}]+)\}/g;
 
 function interpolateEnvVars(value: string): string {
 	return value.replace(ENV_VAR_RE, (_match, varName: string) => {
-		const val = Deno.env.get(varName);
+		const val = process.env[varName];
 		if (val === undefined) {
 			throw new Error(
 				`Environment variable "${varName}" is not set` +
@@ -266,7 +268,7 @@ function assertBoolean(val: unknown, field: string): boolean {
 
 function resolvePath(val: string, baseDir?: string): string {
 	if (isAbsolute(val)) return resolve(val);
-	return resolve(baseDir ?? Deno.cwd(), val);
+	return resolve(baseDir ?? process.cwd(), val);
 }
 
 function validateSource(raw: unknown, baseDir?: string): SourceConfig {
@@ -599,7 +601,7 @@ function validateNotify(raw: unknown): NotifyConfig | undefined {
  * Throws descriptive errors on invalid input.
  *
  * Relative paths in the config are resolved against `baseDir` if provided,
- * otherwise against `Deno.cwd()`. When calling programmatically you should
+ * otherwise against `process.cwd()`. When calling programmatically you should
  * prefer passing an explicit `baseDir` (or absolute paths) to avoid cwd-
  * dependent behaviour.
  */
@@ -646,7 +648,9 @@ export function validateConfig(
  */
 export async function loadConfig(path: string): Promise<FileRelayConfig> {
 	const resolvedPath = resolve(path);
-	const text = await Deno.readTextFile(resolvedPath);
+	// Decoded via TextDecoder, which drops a leading BOM (as Deno.readTextFile did);
+	// readFile(path, "utf8") would keep it and JSON.parse would then reject the file.
+	const text = new TextDecoder().decode(await readFile(resolvedPath));
 	let raw: unknown;
 	try {
 		raw = JSON.parse(text);

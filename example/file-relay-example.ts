@@ -2,41 +2,44 @@
  * Example: relay test files to a real static-upload-server.
  *
  * Usage:
- *   deno run -A --env-file=example/.env example/file-relay-example.ts
+ *   pnpm run example
+ *   (= node --env-file=example/.env example/file-relay-example.ts)
  *
  * Required env vars (see .env.example):
  *   STATIC_UPLOAD_SERVER_URL
  *   STATIC_UPLOAD_SERVER_TOKEN
  */
 
-import { dirname, fromFileUrl, join } from "@std/path";
-import { ensureDir } from "@std/fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { relay, validateConfig } from "../src/mod.ts";
 
-const url = Deno.env.get("STATIC_UPLOAD_SERVER_URL");
-const token = Deno.env.get("STATIC_UPLOAD_SERVER_TOKEN");
+const url = process.env.STATIC_UPLOAD_SERVER_URL;
+const token = process.env.STATIC_UPLOAD_SERVER_TOKEN;
 
 if (!url || !token) {
 	console.error(
 		"Missing STATIC_UPLOAD_SERVER_URL or STATIC_UPLOAD_SERVER_TOKEN.",
-		"\nRun with: deno run -A --env-file=example/.env example/file-relay-example.ts",
+		"\nRun with: pnpm run example (with example/.env in place)",
 	);
-	Deno.exit(2);
+	process.exit(2);
 }
 
 // --- dirs relative to this script's location ---
 
-const exampleDir = dirname(fromFileUrl(import.meta.url));
+const exampleDir = dirname(fileURLToPath(import.meta.url));
 const sourceDir = join(exampleDir, "source");
 const logDir = join(exampleDir, "log");
 const trackDir = join(exampleDir, "track");
 
 // --- create a timestamped dummy file before each run ---
 
-await ensureDir(join(sourceDir, "dummy"));
+await mkdir(join(sourceDir, "dummy"), { recursive: true });
 
 const ts = new Date().toISOString().replace(/[:.]/g, "-");
-await Deno.writeTextFile(
+await writeFile(
 	join(sourceDir, "dummy", `${ts}.txt`),
 	`file-relay example run at ${new Date().toISOString()}\n`,
 );

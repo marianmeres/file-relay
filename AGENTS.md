@@ -6,15 +6,19 @@
 name: "@marianmeres/file-relay"
 license: "MIT"
 repository: "https://github.com/marianmeres/file-relay"
+registry_npm: "https://www.npmjs.com/package/@marianmeres/file-relay"
 registry_jsr: "https://jsr.io/@marianmeres/file-relay"
 ```
 
-- **Stack**: TypeScript, Deno
-- **Run**: `deno run -A jsr:@marianmeres/file-relay <config.json>`
-- **Install**: `deno run -A jsr:@marianmeres/file-relay/install <dirname>`
-- **Test**: `deno test -A`
-- **Lint**: `deno lint`
-- **Format**: `deno fmt`
+- **Stack**: TypeScript on Node (>= 24.12, type stripping), pnpm, Biome; published
+  to npm (built `dist/`) and JSR (the `.ts` source, for Deno users)
+- **Run**: `file-relay <config.json>` (npm bin) /
+  `deno run -A jsr:@marianmeres/file-relay <config.json>` (JSR)
+- **Install** (scaffolder, JSR only): `deno run -A jsr:@marianmeres/file-relay/install <dirname>`
+- **Test**: `pnpm test` (node:test); `pnpm run test:deno` (same suite on Deno)
+- **Type check**: `pnpm run typecheck` (`tsc --noEmit`, the type gate: Node never checks)
+- **Lint / format**: `pnpm run lint` / `pnpm run format` (Biome)
+- **All gates**: `pnpm run ci` (typecheck + lint + test + npm tarball smoke)
 
 ## Purpose
 
@@ -28,11 +32,14 @@ duplicates. Designed for cron-based offsite backup relay (e.g. database dumps).
 
 ```
 src/
-  cli.ts                          # CLI entry point (default export ".")
-  mod.ts                          # Programmatic API (export "./mod")
-  install.ts                      # Scaffolding CLI (export "./install")
+  cli.ts                          # CLI: runCli(args) -> exit code; JSR "." (runs when main)
+  bin.ts                          # npm `file-relay` bin: runs runCli unconditionally
+  version.ts                      # VERSION constant, synced from package.json on release
+  mod.ts                          # Programmatic API (JSR "./mod"; npm "." and "./mod")
+  install.ts                      # Scaffolding CLI (JSR "./install" only; not built for npm)
   config.ts                       # Config types, loading, validation, env interpolation
   file-finder.ts                  # Recursive dir scan with glob/exclude + regex match/ignore filtering
+  _glob-to-regexp.ts              # globToRegExp vendored from @std/path 1.1.5 (no @std dependency)
   tracker.ts                      # Filesystem marker-file deduplication (+ sweepTmp)
   relay.ts                        # Orchestrator, retry/concurrency/abort, per-run log writer
   notify.ts                       # CLI-only email notification (send-email/SMTP). NOT exported from mod
@@ -41,7 +48,9 @@ src/
     static-upload-server.ts       # HTTP streaming multipart upload adapter
     filesystem.ts                 # Raw copy adapter (with optional sha256 verify)
 tests/
-  _helpers.ts                     # Test utilities (temp dirs, mock server)
+  _helpers.ts                     # Test utilities (temp dirs, mock upload server, serve())
+  cli.e2e.test.ts                 # Spawns the CLI (CLI_RUNTIME=deno: the JSR entry on Deno)
+  version.test.ts                 # src/version.ts == package.json version
   config.test.ts                  # Config validation tests (incl. notify block)
   file-finder.test.ts             # File discovery tests (incl. symlink cycle)
   tracker.test.ts                 # Tracker + sweepTmp tests
@@ -58,8 +67,14 @@ example/
   log/                            # Per-run log files (gitignored)
   track/                          # Transfer markers (gitignored)
 scripts/
-  build-npm.ts                    # npm distribution build
-deno.json                         # Config, tasks, imports
+  smoke-npm.ts                    # Packs + npm-installs the tarball, runs bin and library
+  sync-version.ts                 # release --before-commit: package.json -> src/version.ts
+example2/                         # A scaffolded (Deno) instance, as install writes it
+package.json                      # Manifest of record (npm): scripts, deps, bin, exports
+jsr.json                          # JSR manifest: exports, jsr: import map, publish file set
+tsconfig.json                     # Type gate (src, tests, scripts, example)
+tsconfig.build.json               # npm build: src -> dist (minus install.ts)
+biome.json                        # Format + lint
 ```
 
 ### Data Flow
@@ -115,11 +130,12 @@ config.json
      servers and costs the server ~3x the file size in RSS. Both stream from disk.
      Accepts non-JSON 2xx responses; respects external `AbortSignal` in addition
      to its own timeout (a timeout is reported as such, not as a bare abort).
-     NOTE: Deno's `fetch` drops `Content-Length` on any streamed body (always
-     chunked), so never rely on the server seeing one. `"put"` responses carry
-     the stored byte count instead, and the adapter fails the transfer on a
-     mismatch — that is the only truncation guard there is.
-   - `filesystem`: `Deno.copyFile` with size verification; `verify: "sha256"`
+     NOTE: `fetch` sends a streamed body without `Content-Length` (always
+     chunked, on Node and Deno alike), so never rely on the server seeing one.
+     `"put"` responses carry the stored byte count instead, and the adapter
+     fails the transfer on a mismatch — that is the only truncation guard there
+     is.
+   - `filesystem`: `copyFile` (node:fs) with size verification; `verify: "sha256"`
      additionally compares digests (opt-in; buffers for hashing).
    - On failure both populate `TransferResult.errorDetail` — the verbose dump
      (request, response status/headers, full body, or stack + `cause` chain).
@@ -138,7 +154,9 @@ config.json
    - Honours `options.signal` — in-flight transfers are cancelled, no new
      transfers scheduled, and `status: "aborted"` is returned.
 
-6. **CLI** (`cli.ts`): Arg parsing (`--concurrency`, `--retry-attempts`,
+6. **CLI** (`cli.ts`): `runCli(args)` resolves to the exit code and never exits
+   the process; `bin.ts` (npm) and the `import.meta.main` guard (JSR) set
+   `process.exitCode` from it. Arg parsing (`--concurrency`, `--retry-attempts`,
    `--dry-run`, `--verbose`, `--no-notify`), SIGINT/SIGTERM handler that flips an
    `AbortController`, calls `relay()`. Exit codes: 0=ok, 1=any failure,
    2=config/fatal, 130=aborted. When `config.notify` is set (and not a dry run /
@@ -146,9 +164,11 @@ config.json
    after the run, hands it to `notify.ts` — dynamically imported so the SMTP
    dependency loads only when a mail is actually sent.
 
-7. **Install** (`install.ts`): Scaffolding CLI. Prompts for source dir,
-   adapter type, and optional email notifications, creating a ready-to-use
-   directory with config.json, deno.json, .env.example, log/, track/.
+7. **Install** (`install.ts`): Scaffolding CLI (`runInstall(args)`; prompts via
+   node:readline). Prompts for source dir, adapter type, and optional email
+   notifications, creating a ready-to-use directory with config.json, deno.json,
+   .env.example, log/, track/. JSR only: it writes a Deno instance, so the npm
+   build excludes it.
 
 8. **Notify** (`notify.ts`): CLI-only. `shouldNotify()` (trigger gate),
    `buildNotificationMessage()` (pure subject/body builder — unit-tested), and
@@ -185,7 +205,7 @@ To add a new adapter:
 ## Critical Conventions
 
 1. All paths in config are resolved: absolute ones as-is; relative ones
-   against `baseDir` (config file's dir for `loadConfig`, else `Deno.cwd()`).
+   against `baseDir` (config file's dir for `loadConfig`, else `process.cwd()`).
 2. Config string values support `${ENV_VAR}` interpolation (error if var unset).
 3. Symlinks are skipped by default (`followSymlinks: false`); cycles are
    detected when enabled.
@@ -194,13 +214,28 @@ To add a new adapter:
    concurrent run's hook.
 6. Adapters must stream file contents — never load an entire file into memory
    for transfer. The opt-in `sha256` verify is the only exception (documented).
-7. Formatting: tabs, 90 char line width, 4-space indent width.
+7. Formatting: Biome — tabs, 90 char line width, 4-space indent width.
 8. Tests use temp directories with `try/finally` cleanup; `createClog.global.debug = false`
    at the top of noisy test files.
 9. Email notification is a CLI-layer concern only. `relay()` and `mod.ts` stay
-   free of `@marianmeres/send-email`/nodemailer — `notify.ts` is imported
-   dynamically from `cli.ts`. Keep it that way: the programmatic API must not
-   pull an SMTP dependency. A notification send must never throw into the run.
+   free of `@marianmeres/send-email`/nodemailer — only `cli.ts` imports
+   `notify.ts`, which imports send-email dynamically, at send time. Keep it that
+   way: the programmatic API must not load an SMTP dependency. (On npm send-email
+   is a regular dependency, since the bin needs it; installed is not loaded.) A
+   notification send must never throw into the run.
+10. Runtime contract: source uses web standards plus `node:*` only — no `Deno.*`
+    or `Bun.*`, no `jsr:` / `npm:` / `https:` specifiers, erasable-only TS
+    (`import type`, no `enum` / `namespace` / parameter properties), explicit
+    `.ts` import extensions. It runs unchanged on Node (npm) and Deno (JSR).
+    jsr.json's `imports` map keeps the JSR build on the JSR copies of the
+    `@marianmeres/*` dependencies; keep its ranges in step with package.json.
+11. Node `fs` traps: `Stats` / `Dirent` have `isFile()` / `isDirectory()`
+    **methods** (Deno had properties); read text through `TextDecoder` where a
+    BOM must be dropped (`loadConfig`); never write to a raw fd after closing it.
+12. The version lives in package.json; `pnpm run release` copies it into
+    `src/version.ts` (`tests/version.test.ts` fails when they disagree). Never
+    hand-edit either.
+13. Test servers listen on port 0 (OS-assigned); nothing here binds a fixed port.
 
 ## Invariants
 
@@ -216,8 +251,10 @@ To add a new adapter:
 ## Before Making Changes
 
 - Check existing patterns in similar adapter/module files
-- Run `deno test -A` and `deno lint` and `deno fmt --check`
+- Run `pnpm run ci` (typecheck, Biome, Node tests, npm smoke) and
+  `pnpm run test:deno` (the suite on Deno, as JSR serves it)
 - Follow the adapter interface contract when adding new adapters
-- Ensure all exported symbols have JSDoc comments (JSR requirement)
+- Ensure all exported symbols have JSDoc comments (JSR requirement);
+  `pnpm run jsr:check` is the JSR dry run (type check + slow types + file set)
 - If changing `RelayRunResult` or `RelayAdapter`, update API.md and the
   "Upgrading" section of README.md, and mention behavioural deltas explicitly

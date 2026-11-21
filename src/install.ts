@@ -1,4 +1,19 @@
-import { resolve } from "@std/path";
+/**
+ * @module
+ *
+ * `file-relay install <dirname>`: scaffolds a new file-relay instance directory
+ * (config, env template, task runner, `log/` and `track/`) after a few prompts.
+ * Run directly as the JSR `./install` export:
+ *
+ * ```bash
+ * deno run -A jsr:@marianmeres/file-relay/install <dirname>
+ * ```
+ */
+
+import { mkdir, stat, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import process from "node:process";
+import { createInterface } from "node:readline";
 
 function printUsage() {
 	console.log(`
@@ -15,51 +30,107 @@ After install:
 `.trim());
 }
 
-function askRequired(question: string): string {
+/** Reads answers from stdin, one line per question. */
+interface LineReader {
+	/** Shows `question` and a space, as the `prompt()` global did, and reads a line. */
+	ask(question: string): Promise<string>;
+	close(): void;
+}
+
+/**
+ * A {@linkcode LineReader} over stdin. Lines are queued as they arrive, so piped
+ * answers (`printf '...' | file-relay install dir`) are all consumed, one per
+ * question, as with Deno's `prompt()`; readline's `question()` would drop the lines
+ * that arrive before it is asked. Without an output stream readline does no line
+ * editing of its own: a terminal echoes the typing itself.
+ */
+function createLineReader(): LineReader {
+	const rl = createInterface({ input: process.stdin });
+	const lines = rl[Symbol.asyncIterator]();
+	return {
+		async ask(question) {
+			process.stdout.write(`${question} `);
+			const next = await lines.next();
+			if (next.done) throw new Error("stdin closed before every question was answered");
+			return next.value;
+		},
+		close() {
+			rl.close();
+		},
+	};
+}
+
+async function askRequired(rl: LineReader, question: string): Promise<string> {
 	while (true) {
-		const answer = prompt(question);
-		if (answer?.trim()) return answer.trim();
+		const answer = await rl.ask(question);
+		if (answer.trim()) return answer.trim();
 		console.log("  Value is required.");
 	}
 }
 
-function askChoice(question: string, choices: string[], defaultChoice?: string): string {
+async function askChoice(
+	rl: LineReader,
+	question: string,
+	choices: string[],
+	defaultChoice?: string,
+): Promise<string> {
 	const hint = choices.map((c) => (c === defaultChoice ? `[${c}]` : c)).join("/");
 	while (true) {
-		const answer = prompt(`${question} (${hint})`);
-		if (!answer?.trim() && defaultChoice) return defaultChoice;
-		if (answer && choices.includes(answer.trim())) return answer.trim();
+		const answer = await rl.ask(`${question} (${hint})`);
+		if (!answer.trim() && defaultChoice) return defaultChoice;
+		if (choices.includes(answer.trim())) return answer.trim();
 		console.log(`  Please choose one of: ${choices.join(", ")}`);
 	}
 }
 
 async function dirExists(path: string): Promise<boolean> {
 	try {
-		const stat = await Deno.stat(path);
-		return stat.isDirectory;
+		const info = await stat(path);
+		return info.isDirectory();
 	} catch {
 		return false;
 	}
 }
 
-async function main() {
-	const dirname = Deno.args[0];
+/**
+ * Runs the scaffolder: prompts on the terminal, then writes the instance.
+ *
+ * @param args - The command-line arguments (`process.argv.slice(2)`): the target
+ *   directory, or `--help`.
+ * @returns The process exit code: `0` done (or help), `1` the directory exists or
+ *   stdin ended before every question was answered, `2` usage error.
+ */
+export async function runInstall(args: string[]): Promise<number> {
+	const dirname = args[0];
 
 	if (!dirname || dirname === "--help" || dirname === "-h") {
 		printUsage();
-		Deno.exit(dirname ? 0 : 2);
+		return dirname ? 0 : 2;
 	}
 
 	const targetDir = resolve(dirname);
 
 	if (await dirExists(targetDir)) {
 		console.error(`Error: directory already exists: ${targetDir}`);
-		Deno.exit(1);
+		return 1;
 	}
 
+	const rl = createLineReader();
+	try {
+		await scaffold(rl, dirname, targetDir);
+	} catch (err) {
+		console.error(`\nError: ${err instanceof Error ? err.message : err}`);
+		return 1;
+	} finally {
+		rl.close();
+	}
+	return 0;
+}
+
+async function scaffold(rl: LineReader, dirname: string, targetDir: string) {
 	// Interactive prompts
-	const sourceDir = askRequired("Source directory to relay files from:");
-	const adapter = askChoice("Destination adapter:", [
+	const sourceDir = await askRequired(rl, "Source directory to relay files from:");
+	const adapter = await askChoice(rl, "Destination adapter:", [
 		"static-upload-server",
 		"filesystem",
 	], "static-upload-server");
@@ -68,7 +139,10 @@ async function main() {
 	let envExample: string;
 
 	if (adapter === "filesystem") {
-		const destDir = askRequired("Destination directory (filesystem copy target):");
+		const destDir = await askRequired(
+			rl,
+			"Destination directory (filesystem copy target):",
+		);
 		destinationConfig = { adapter: "filesystem", dir: destDir };
 		envExample = "# No environment variables needed for filesystem adapter\n";
 	} else {
@@ -81,7 +155,8 @@ async function main() {
 	}
 
 	// Optional email notification (e.g. a "the cron ran" heartbeat + failure alerts).
-	const wantNotify = askChoice(
+	const wantNotify = await askChoice(
+		rl,
 		"Enable email notifications after each run?",
 		["yes", "no"],
 		"no",
@@ -132,14 +207,14 @@ async function main() {
 	);
 
 	// Create directory structure
-	await Deno.mkdir(resolve(targetDir, "log"), { recursive: true });
-	await Deno.mkdir(resolve(targetDir, "track"), { recursive: true });
+	await mkdir(resolve(targetDir, "log"), { recursive: true });
+	await mkdir(resolve(targetDir, "track"), { recursive: true });
 
-	await Deno.writeTextFile(resolve(targetDir, "config.json"), configJson + "\n");
-	await Deno.writeTextFile(resolve(targetDir, "deno.json"), denoJson + "\n");
-	await Deno.writeTextFile(resolve(targetDir, ".env.example"), envExample);
-	await Deno.writeTextFile(resolve(targetDir, "log", ".gitkeep"), "");
-	await Deno.writeTextFile(resolve(targetDir, "track", ".gitkeep"), "");
+	await writeFile(resolve(targetDir, "config.json"), configJson + "\n");
+	await writeFile(resolve(targetDir, "deno.json"), denoJson + "\n");
+	await writeFile(resolve(targetDir, ".env.example"), envExample);
+	await writeFile(resolve(targetDir, "log", ".gitkeep"), "");
+	await writeFile(resolve(targetDir, "track", ".gitkeep"), "");
 
 	console.log(`\nCreated file-relay instance at: ${targetDir}`);
 	console.log(`\nNext steps:`);
@@ -148,4 +223,8 @@ async function main() {
 	console.log(`  3. Setup cron: deno task backup`);
 }
 
-main();
+// Run when this module is the program entrypoint — the JSR `./install` export, as
+// `deno run -A jsr:@marianmeres/file-relay/install` executes it.
+if (import.meta.main) {
+	process.exitCode = await runInstall(process.argv.slice(2));
+}

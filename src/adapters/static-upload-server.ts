@@ -1,3 +1,5 @@
+import type { ReadStream } from "node:fs";
+import { open } from "node:fs/promises";
 import type { FileInfo } from "../file-finder.ts";
 import type { StaticUploadMode, StaticUploadServerDestination } from "../config.ts";
 import type {
@@ -39,7 +41,7 @@ function buildPutUrl(baseUrl: string, relativePath: string): string {
  * without buffering the file contents in memory.
  */
 function buildMultipartStream(
-	file: Deno.FsFile,
+	fileStream: ReadableStream<Uint8Array>,
 	filename: string,
 	boundary: string,
 ): {
@@ -58,7 +60,6 @@ function buildMultipartStream(
 	const header = enc.encode(headerStr);
 	const footer = enc.encode(footerStr);
 
-	const fileStream = file.readable;
 	const reader = fileStream.getReader();
 
 	const body = new ReadableStream<Uint8Array>({
@@ -231,7 +232,8 @@ export function createStaticUploadServerAdapter(
 			};
 			options?.signal?.addEventListener("abort", onExternalAbort);
 
-			let fh: Deno.FsFile | null = null;
+			// The open file, as a Node stream: destroying it closes the file.
+			let fileStream: ReadStream | null = null;
 
 			/** The request half of a failure dump — identical for both modes. */
 			const requestLines = () => [
@@ -241,9 +243,9 @@ export function createStaticUploadServerAdapter(
 				`  Content-Type: ${
 					mode === "put" ? "application/octet-stream" : "multipart/form-data"
 				}`,
-				// Deno's fetch forces chunked encoding on any streamed body and
-				// drops Content-Length, so we never declare a length.
-				`  Transfer-Encoding: chunked (Deno streams the body)`,
+				// fetch sends a streamed body chunked, without Content-Length, so
+				// we never declare a length.
+				`  Transfer-Encoding: chunked (the body is streamed)`,
 				`  Source file: ${file.path} (${file.size} bytes)`,
 			];
 
@@ -252,7 +254,11 @@ export function createStaticUploadServerAdapter(
 					throw options.signal.reason ?? new Error("Aborted");
 				}
 
-				fh = await Deno.open(file.path, { read: true });
+				// Open first, so a missing or unreadable file fails here with its
+				// own error rather than later, inside fetch().
+				const fh = await open(file.path, "r");
+				fileStream = fh.createReadStream();
+				const fileBody = ReadableStream.from(fileStream) as ReadableStream<Uint8Array>;
 
 				const headers: Record<string, string> = {
 					"Authorization": `Bearer ${config.token}`,
@@ -262,12 +268,12 @@ export function createStaticUploadServerAdapter(
 				if (mode === "put") {
 					// The body IS the file — straight from disk to socket, with
 					// no multipart envelope for the server to parse into RAM.
-					body = fh.readable;
+					body = fileBody;
 					headers["Content-Type"] = "application/octet-stream";
 				} else {
 					const boundary = makeBoundary();
 					body = buildMultipartStream(
-						fh,
+						fileBody,
 						file.relativePath,
 						boundary,
 					).body;
@@ -279,7 +285,7 @@ export function createStaticUploadServerAdapter(
 					headers,
 					body,
 					signal: controller.signal,
-					// deno-lint-ignore no-explicit-any
+					// biome-ignore lint/suspicious/noExplicitAny: `duplex` is not in every runtime's RequestInit type
 					...({ duplex: "half" } as any),
 				});
 
@@ -332,8 +338,8 @@ export function createStaticUploadServerAdapter(
 					// canonical { uploaded: [...] } envelope.
 				}
 
-				// Truncation guard. Deno's fetch strips Content-Length from a
-				// streamed body, so the server cannot run its own short-body
+				// Truncation guard. fetch sends a streamed body without
+				// Content-Length, so the server cannot run its own short-body
 				// check — it reports `size` (bytes written) for us to compare.
 				// Without this a connection dropping mid-upload would look like
 				// success, and the file would be marked transferred for good.
@@ -404,13 +410,10 @@ export function createStaticUploadServerAdapter(
 			} finally {
 				clearTimeout(timer);
 				options?.signal?.removeEventListener("abort", onExternalAbort);
-				// fh.readable auto-closes on stream completion, but close it
-				// defensively if the stream never started or was cancelled.
-				try {
-					fh?.close();
-				} catch {
-					// already closed
-				}
+				// The stream closes the file once read to the end; destroy it
+				// defensively if it never started or was cancelled (a no-op if
+				// it is already closed).
+				fileStream?.destroy();
 			}
 		},
 	};

@@ -134,7 +134,7 @@ export function serve(
 		if (outgoing.destroyed) return;
 		outgoing.statusCode = response.status;
 		outgoing.statusMessage = response.statusText;
-		response.headers.forEach((v, k) => outgoing.setHeader(k, v));
+		for (const [k, v] of response.headers) outgoing.setHeader(k, v);
 		try {
 			if (response.body) {
 				for await (const chunk of response.body) {

@@ -30,7 +30,7 @@ const config = await loadConfig("./relay-config.json");
 Validate a raw object as a `FileRelayConfig`. Useful when constructing config programmatically.
 
 Relative paths in the config are resolved against `baseDir` if provided, otherwise
-against `Deno.cwd()`. When calling programmatically, prefer passing an explicit
+against `process.cwd()`. When calling programmatically, prefer passing an explicit
 `baseDir` (or using absolute paths) to avoid cwd-dependent behaviour.
 
 **Parameters:**

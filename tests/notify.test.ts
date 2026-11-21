@@ -37,9 +37,9 @@ const baseConfig: NotifyConfig = {
 const okCtx: NotifyContext = {
 	result: makeResult("ok", {
 		transfers: [
-			// deno-lint-ignore no-explicit-any
+			// biome-ignore lint/suspicious/noExplicitAny: a partial TransferResult stub
 			{ success: true } as any,
-			// deno-lint-ignore no-explicit-any
+			// biome-ignore lint/suspicious/noExplicitAny: a partial TransferResult stub
 			{ success: true } as any,
 		],
 	}),
@@ -140,9 +140,9 @@ test("notify - buildNotificationMessage failure counts succeeded/failed", () => 
 		result: makeResult("partial", {
 			filesAlreadyTransferred: 5,
 			transfers: [
-				// deno-lint-ignore no-explicit-any
+				// biome-ignore lint/suspicious/noExplicitAny: a partial TransferResult stub
 				{ success: true } as any,
-				// deno-lint-ignore no-explicit-any
+				// biome-ignore lint/suspicious/noExplicitAny: a partial TransferResult stub
 				{ success: false } as any,
 			],
 		}),

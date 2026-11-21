@@ -1,5 +1,6 @@
 # @marianmeres/file-relay
 
+[![NPM](https://img.shields.io/npm/v/@marianmeres/file-relay)](https://www.npmjs.com/package/@marianmeres/file-relay)
 [![JSR](https://jsr.io/badges/@marianmeres/file-relay)](https://jsr.io/@marianmeres/file-relay)
 [![License](https://img.shields.io/npm/l/@marianmeres/file-relay)](LICENSE)
 
@@ -12,15 +13,19 @@ prevent duplicates. Designed for cron-based offsite backup relay.
 ## Installation
 
 ```bash
-# Run directly (no install needed)
+# npm: the `file-relay` CLI plus the library (Node >= 24.12)
+npm install -g @marianmeres/file-relay   # or locally, in a project
+npx @marianmeres/file-relay config.json  # or run it without installing
+
+# Deno (JSR): the same CLI and library
 deno run -A jsr:@marianmeres/file-relay config.json
-
-# Scaffold a new relay instance interactively
-deno run -A jsr:@marianmeres/file-relay/install <dirname>
-
-# Or add to your project
 deno add jsr:@marianmeres/file-relay
+
+# Scaffold a new relay instance interactively (JSR only, writes a Deno instance)
+deno run -A jsr:@marianmeres/file-relay/install <dirname>
 ```
+
+Both registries ship the same code: Node runs it from npm, Deno from JSR.
 
 ## Quick Start
 
@@ -34,7 +39,8 @@ deno run -A jsr:@marianmeres/file-relay/install my-backup
 
 This interactively prompts for source directory and adapter type, then creates a
 ready-to-use directory with `config.json`, `deno.json`, `.env.example`, `log/`,
-and `track/`. After that:
+and `track/`, run by Deno. (On Node, set the instance up by hand as in
+[Manual Setup](#manual-setup).) After that:
 
 ```bash
 cd my-backup
@@ -67,9 +73,12 @@ Run it:
 
 ```bash
 # Dry run (see what would be transferred)
-deno run -A jsr:@marianmeres/file-relay relay-config.json --dry-run
+file-relay relay-config.json --dry-run
 
 # Actual transfer
+file-relay relay-config.json
+
+# The same on Deno
 deno run -A jsr:@marianmeres/file-relay relay-config.json
 ```
 
@@ -77,9 +86,14 @@ Set up as a cron job:
 
 ```bash
 # Every hour
-0 * * * * RELAY_UPLOAD_TOKEN=secret deno run -A jsr:@marianmeres/file-relay /etc/file-relay/config.json
+0 * * * * RELAY_UPLOAD_TOKEN=secret file-relay /etc/file-relay/config.json
 
-# Daily, loading credentials (upload token, SMTP, ...) from an .env file
+# Daily, loading credentials (upload token, SMTP, ...) from an .env file. Node's
+# --env-file needs the bin's JS file: an npm install links it from the bin dir
+# (`command -v file-relay`)
+0 3 * * * node --env-file=/etc/file-relay/.env /usr/local/bin/file-relay /etc/file-relay/config.json
+
+# The same on Deno
 0 3 * * * deno run -A --env-file=/etc/file-relay/.env jsr:@marianmeres/file-relay /etc/file-relay/config.json
 ```
 
@@ -90,7 +104,10 @@ alert when a transfer fails.
 ## CLI Options
 
 ```
-deno run -A jsr:@marianmeres/file-relay <config.json> [options]
+file-relay <config.json> [options]
+
+  Without installing: npx @marianmeres/file-relay <config.json> [options]
+  On Deno (JSR):      deno run -A jsr:@marianmeres/file-relay <config.json> [options]
 
 Options:
   --dry-run                Find and report files without transferring
@@ -189,7 +206,7 @@ If you point `mode: "put"` at a pre-1.7.0 server the PUT route doesn't exist and
 get a 404; the adapter detects that case and says so explicitly rather than leaving you
 to wonder about the URL.
 
-Because Deno's `fetch` strips `Content-Length` from a streamed body (it always sends
+Because `fetch` sends a streamed body without `Content-Length` (it always sends
 `Transfer-Encoding: chunked`), the server can't run its own short-body check. Instead it
 reports the byte count it stored, and the adapter compares that against the source size —
 a connection that drops mid-upload fails the transfer instead of being silently marked
@@ -236,7 +253,7 @@ Top-level `transfer` object controls retry and concurrency for all adapters:
 Add a top-level `notify` block to get an email after each run — a "the cron ran"
 heartbeat plus an immediate alert when something fails. The email subject carries
 the status at a glance (so you can triage from the inbox), and the body is the run's
-log output. Uses [@marianmeres/send-email](https://jsr.io/@marianmeres/send-email)
+log output. Uses [@marianmeres/send-email](https://www.npmjs.com/package/@marianmeres/send-email)
 (SMTP) under the hood.
 
 ```json
@@ -288,7 +305,8 @@ Notes:
 - A failed email send **never** changes the exit code — it is logged as a warning
   to stderr (so a cron `MAILTO` still catches it) and the run's own status stands.
 - Omit `notify` entirely and nothing changes — the SMTP dependency is only loaded
-  when a notification is actually sent.
+  when a notification is actually sent. (From npm it is still installed with the
+  package, as the CLI's runtime dependency; the library never loads it.)
 
 ### Environment Variable Interpolation
 
@@ -303,6 +321,9 @@ String values in config support `${ENV_VAR}` syntax, resolved at load time:
 ```
 
 ## Programmatic API
+
+`@marianmeres/file-relay/mod` is the library on both registries (on npm, the bare
+`@marianmeres/file-relay` is the same module):
 
 ```typescript
 import { loadConfig, relay } from "@marianmeres/file-relay/mod";
@@ -399,12 +420,37 @@ A working example against a real server is included in `example/`:
 cp example/.env.example example/.env
 
 # Run the example
-deno task example
+pnpm run example
+```
+
+## Development
+
+Node is the dev runtime and the gate; Deno only runs the suite once more for JSR.
+
+```bash
+pnpm install
+pnpm test            # node:test, from the TypeScript source
+pnpm run ci          # typecheck + lint + test + npm tarball smoke test
+pnpm run test:deno   # the same suite on Deno, against the JSR manifest
 ```
 
 ## API
 
 See [API.md](API.md) for complete API documentation.
+
+## Upgrading to 1.7
+
+The package moved off Deno: it is developed and tested on Node, and published to
+npm (new) as well as JSR (unchanged for Deno users). Code, config and results are
+the same on both; the CLI and library behave as before on Deno. What differs is
+wording only:
+
+- `--help` shows `file-relay <config.json>` as the usage line (and the `npx` / Deno
+  forms below it).
+- A failure dump's request section reads `Transfer-Encoding: chunked (the body is
+  streamed)` instead of naming Deno.
+- A `filesystem` preflight that fails because the destination exists as a file
+  reports the OS error (`EEXIST: file already exists, mkdir ...`).
 
 ## Upgrading to 1.3
 

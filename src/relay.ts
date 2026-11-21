@@ -1,6 +1,8 @@
+import { closeSync, fsyncSync, openSync, writeSync } from "node:fs";
+import { mkdir, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import process from "node:process";
 import { type Clog, createClog } from "@marianmeres/clog";
-import { ensureDir } from "@std/fs";
-import { join } from "@std/path";
 import type { FileRelayConfig, RetryConfig } from "./config.ts";
 import { type FileInfo, findFiles } from "./file-finder.ts";
 import { createTracker } from "./tracker.ts";
@@ -17,13 +19,13 @@ import {
  *
  * Kept as a loose type alias for backwards compatibility with 1.x callers.
  */
-// deno-lint-ignore no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: console-compatible signature, as clog's
 export type ClogFn = ((...args: any[]) => any) & {
-	// deno-lint-ignore no-explicit-any
+	// biome-ignore lint/suspicious/noExplicitAny: console-compatible signature, as clog's
 	debug: (...args: any[]) => any;
-	// deno-lint-ignore no-explicit-any
+	// biome-ignore lint/suspicious/noExplicitAny: console-compatible signature, as clog's
 	warn: (...args: any[]) => any;
-	// deno-lint-ignore no-explicit-any
+	// biome-ignore lint/suspicious/noExplicitAny: console-compatible signature, as clog's
 	error: (...args: any[]) => any;
 };
 
@@ -137,11 +139,11 @@ async function transferWithRetry(
 		// re-stat to pick up replacements / deletions between discovery and transfer
 		let current: FileInfo = file;
 		try {
-			const stat = await Deno.stat(file.path);
+			const info = await stat(file.path);
 			current = {
 				...file,
-				size: stat.size,
-				mtime: stat.mtime ?? file.mtime,
+				size: info.size,
+				mtime: info.mtime ?? file.mtime,
 			};
 		} catch (err) {
 			return {
@@ -256,9 +258,9 @@ export async function relay(
 		// relay() that started while we were running).
 		if (
 			logWriter &&
-			// deno-lint-ignore no-explicit-any
+			// biome-ignore lint/suspicious/noExplicitAny: reads the tag set below
 			(createClog.global as any).hook &&
-			// deno-lint-ignore no-explicit-any
+			// biome-ignore lint/suspicious/noExplicitAny: reads the tag set below
 			(createClog.global as any).hook.__fileRelayWriter === logWriter
 		) {
 			createClog.global.hook = prevHook;
@@ -273,7 +275,7 @@ export async function relay(
 
 	// tag the hook so finish() can detect whether it's still ours
 	if (logWriter) {
-		// deno-lint-ignore no-explicit-any
+		// biome-ignore lint/suspicious/noExplicitAny: an ad-hoc tag on the hook function
 		(createClog.global.hook as any).__fileRelayWriter = logWriter;
 	}
 
@@ -512,8 +514,8 @@ async function _writeErrorDump(
 	].join("\n");
 
 	try {
-		await ensureDir(logDir);
-		await Deno.writeTextFile(path, content);
+		await mkdir(logDir, { recursive: true });
+		await writeFile(path, content);
 		return path;
 	} catch {
 		return null;
@@ -524,23 +526,20 @@ async function _writeErrorDump(
 // Log file writer
 // -----------------------------------------------------------------------------
 
-const _encoder = new TextEncoder();
-
 async function _initLogFileWriter(logDir: string, runTs: string) {
 	try {
-		await ensureDir(logDir);
+		await mkdir(logDir, { recursive: true });
 	} catch {
 		return null;
 	}
 
 	const logFile = join(logDir, `file-relay-${runTs}.log`);
-	let fh: Deno.FsFile;
+	// A raw descriptor, written synchronously from the (sync) clog hook. `null`
+	// once closed: a write after close() must fail, as it did on Deno's FsFile,
+	// and never land on a descriptor number the OS has since reused.
+	let fd: number | null;
 	try {
-		fh = Deno.openSync(logFile, {
-			write: true,
-			create: true,
-			append: true,
-		});
+		fd = openSync(logFile, "a");
 	} catch {
 		return null;
 	}
@@ -549,7 +548,7 @@ async function _initLogFileWriter(logDir: string, runTs: string) {
 	let warnedOnce = false;
 
 	return {
-		// deno-lint-ignore no-explicit-any
+		// biome-ignore lint/suspicious/noExplicitAny: a clog hook record
 		write(data: Record<string, any>) {
 			const level = data.level ?? "INFO";
 			const timestamp = data.timestamp ?? new Date().toISOString();
@@ -559,7 +558,8 @@ async function _initLogFileWriter(logDir: string, runTs: string) {
 				.join(" ");
 			const line = `[${timestamp}] [${level}] ${ns}${msg}\n`;
 			try {
-				fh.writeSync(_encoder.encode(line));
+				if (fd === null) throw new Error("log file is closed");
+				writeSync(fd, line);
 				writeFailures = 0;
 			} catch (err) {
 				writeFailures++;
@@ -569,10 +569,10 @@ async function _initLogFileWriter(logDir: string, runTs: string) {
 					warnedOnce = true;
 					const reason = err instanceof Error ? err.message : String(err);
 					try {
-						Deno.stderr.writeSync(_encoder.encode(
+						process.stderr.write(
 							`[file-relay] log file writes failing (${reason}) — ` +
 								`further errors suppressed\n`,
-						));
+						);
 					} catch {
 						// ignore
 					}
@@ -580,16 +580,18 @@ async function _initLogFileWriter(logDir: string, runTs: string) {
 			}
 		},
 		close() {
+			if (fd === null) return;
 			try {
-				fh.syncSync();
+				fsyncSync(fd);
 			} catch {
 				// ignore
 			}
 			try {
-				fh.close();
+				closeSync(fd);
 			} catch {
 				// ignore
 			}
+			fd = null;
 		},
 	};
 }

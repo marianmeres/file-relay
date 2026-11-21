@@ -1,23 +1,37 @@
+/**
+ * @module
+ *
+ * The `file-relay` CLI. From npm it is the `file-relay` bin (`bin.ts`); from JSR,
+ * this module run directly:
+ *
+ * ```bash
+ * npx @marianmeres/file-relay config.json --dry-run
+ * deno run -A jsr:@marianmeres/file-relay config.json --dry-run
+ * ```
+ *
+ * All logic lives in {@linkcode runCli}, which takes the argument list and resolves
+ * to the process exit code (it never exits the process itself).
+ */
+
+import { hostname } from "node:os";
+import process from "node:process";
 import { createClog } from "@marianmeres/clog";
 import { loadConfig } from "./config.ts";
 import { relay, type RelayRunResult } from "./relay.ts";
 import { type NotifyContext, sendNotification, shouldNotify } from "./notify.ts";
-
-import denoJson from "../deno.json" with { type: "json" };
-
-const VERSION = denoJson.version;
+import { VERSION } from "./version.ts";
 
 /** Best-effort machine identifier for notification subject/body. */
 function getHost(): string {
 	try {
-		return Deno.hostname();
+		return hostname();
 	} catch {
-		return Deno.env.get("HOSTNAME") ?? "unknown-host";
+		return process.env.HOSTNAME ?? "unknown-host";
 	}
 }
 
 /** Render a captured clog record into a compact email-body line. */
-// deno-lint-ignore no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: a clog hook record
 function formatCapturedLine(data: Record<string, any>): string {
 	const level = data.level ?? "INFO";
 	const msg = (data.args ?? [])
@@ -33,7 +47,10 @@ file-relay v${VERSION}
 Transfer local files to a remote destination based on config.
 
 Usage:
-  deno run -A jsr:@marianmeres/file-relay <config.json> [options]
+  file-relay <config.json> [options]
+
+  Without installing: npx @marianmeres/file-relay <config.json> [options]
+  On Deno (JSR):      deno run -A jsr:@marianmeres/file-relay <config.json> [options]
 
 Arguments:
   config.json              Path to the JSON config file (required)
@@ -53,7 +70,20 @@ Signals:
 `.trim());
 }
 
-function parseArgs(args: string[]) {
+/** Parsed command line, or the exit code to stop with right away. */
+type ParsedArgs =
+	| { exit: number }
+	| {
+		exit?: undefined;
+		configPath: string;
+		dryRun: boolean;
+		verbose: boolean;
+		noNotify: boolean;
+		concurrency: number | undefined;
+		retryAttempts: number | undefined;
+	};
+
+function parseArgs(args: string[]): ParsedArgs {
 	let configPath: string | null = null;
 	let dryRun = false;
 	let verbose = false;
@@ -64,11 +94,11 @@ function parseArgs(args: string[]) {
 	for (const arg of args) {
 		if (arg === "--help" || arg === "-h") {
 			printHelp();
-			Deno.exit(0);
+			return { exit: 0 };
 		}
 		if (arg === "--version" || arg === "-v") {
 			console.log(VERSION);
-			Deno.exit(0);
+			return { exit: 0 };
 		}
 		if (arg === "--dry-run") {
 			dryRun = true;
@@ -86,7 +116,7 @@ function parseArgs(args: string[]) {
 			const v = Number(arg.slice("--concurrency=".length));
 			if (!Number.isInteger(v) || v < 1) {
 				console.error(`--concurrency must be a positive integer`);
-				Deno.exit(2);
+				return { exit: 2 };
 			}
 			concurrency = v;
 			continue;
@@ -95,35 +125,46 @@ function parseArgs(args: string[]) {
 			const v = Number(arg.slice("--retry-attempts=".length));
 			if (!Number.isInteger(v) || v < 1) {
 				console.error(`--retry-attempts must be a positive integer`);
-				Deno.exit(2);
+				return { exit: 2 };
 			}
 			retryAttempts = v;
 			continue;
 		}
 		if (arg.startsWith("-")) {
 			console.error(`Unknown option: ${arg}`);
-			Deno.exit(2);
+			return { exit: 2 };
 		}
 		if (!configPath) {
 			configPath = arg;
 		} else {
 			console.error(`Unexpected argument: ${arg}`);
-			Deno.exit(2);
+			return { exit: 2 };
 		}
 	}
 
 	if (!configPath) {
 		console.error("Error: config file path is required\n");
 		printHelp();
-		Deno.exit(2);
+		return { exit: 2 };
 	}
 
 	return { configPath, dryRun, verbose, noNotify, concurrency, retryAttempts };
 }
 
-async function main() {
-	const { configPath, dryRun, verbose, noNotify, concurrency, retryAttempts } =
-		parseArgs(Deno.args);
+/**
+ * Runs the `file-relay` CLI.
+ *
+ * Exit codes: `0` success (or nothing to do), `1` a transfer or the preflight
+ * failed, `2` usage, config or fatal error, `130` aborted by SIGINT/SIGTERM.
+ *
+ * @param args - The command-line arguments, without the runtime and script
+ *   (`process.argv.slice(2)`).
+ * @returns The process exit code.
+ */
+export async function runCli(args: string[]): Promise<number> {
+	const parsed = parseArgs(args);
+	if (parsed.exit !== undefined) return parsed.exit;
+	const { configPath, dryRun, verbose, noNotify, concurrency, retryAttempts } = parsed;
 
 	// Load config
 	let config;
@@ -133,7 +174,7 @@ async function main() {
 		console.error(
 			`Config error: ${err instanceof Error ? err.message : err}`,
 		);
-		Deno.exit(2);
+		return 2;
 	}
 
 	if (concurrency !== undefined || retryAttempts !== undefined) {
@@ -182,8 +223,8 @@ async function main() {
 		controller.abort();
 	};
 	try {
-		Deno.addSignalListener("SIGINT", onSignal);
-		Deno.addSignalListener("SIGTERM", onSignal);
+		process.on("SIGINT", onSignal);
+		process.on("SIGTERM", onSignal);
 	} catch {
 		// signals may not be available on all platforms — non-fatal
 	}
@@ -204,8 +245,8 @@ async function main() {
 		exitCode = 2;
 	} finally {
 		try {
-			Deno.removeSignalListener("SIGINT", onSignal);
-			Deno.removeSignalListener("SIGTERM", onSignal);
+			process.off("SIGINT", onSignal);
+			process.off("SIGTERM", onSignal);
 		} catch {
 			// ignore
 		}
@@ -236,7 +277,12 @@ async function main() {
 		}
 	}
 
-	Deno.exit(exitCode);
+	return exitCode;
 }
 
-main();
+// Run as a CLI when this module is the program entrypoint — the JSR `.` export,
+// as `deno run -A jsr:@marianmeres/file-relay` executes it. Imported (the npm bin
+// does that), it only defines runCli.
+if (import.meta.main) {
+	process.exitCode = await runCli(process.argv.slice(2));
+}

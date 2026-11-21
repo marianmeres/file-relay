@@ -1,5 +1,6 @@
-import { isAbsolute, join, relative } from "@std/path";
-import { globToRegExp } from "@std/path/glob-to-regexp";
+import { opendir, realpath, stat } from "node:fs/promises";
+import { isAbsolute, join, relative } from "node:path";
+import { globToRegExp } from "./_glob-to-regexp.ts";
 import type { SourceConfig } from "./config.ts";
 
 /** Metadata about a discovered file in the source directory. */
@@ -29,7 +30,7 @@ async function* walkDir(
 	if (followSymlinks) {
 		let real: string;
 		try {
-			real = await Deno.realPath(dir);
+			real = await realpath(dir);
 		} catch {
 			return;
 		}
@@ -37,18 +38,19 @@ async function* walkDir(
 		visited.add(real);
 	}
 
-	for await (const entry of Deno.readDir(dir)) {
+	// opendir: entries in directory order, lstat-based (a symlink is a symlink)
+	for await (const entry of await opendir(dir)) {
 		const fullPath = join(dir, entry.name);
-		if (entry.isDirectory) {
+		if (entry.isDirectory()) {
 			yield* walkDir(fullPath, followSymlinks, visited);
-		} else if (entry.isFile) {
+		} else if (entry.isFile()) {
 			yield { path: fullPath, name: entry.name };
-		} else if (entry.isSymlink && followSymlinks) {
+		} else if (entry.isSymbolicLink() && followSymlinks) {
 			try {
-				const info = await Deno.stat(fullPath);
-				if (info.isFile) {
+				const info = await stat(fullPath);
+				if (info.isFile()) {
 					yield { path: fullPath, name: entry.name };
-				} else if (info.isDirectory) {
+				} else if (info.isDirectory()) {
 					yield* walkDir(fullPath, followSymlinks, visited);
 				}
 			} catch {
@@ -101,13 +103,13 @@ export async function findFiles(source: SourceConfig): Promise<FileInfo[]> {
 		if (ignoreRes.some((re) => re.test(rel))) continue;
 
 		try {
-			const stat = await Deno.stat(entry.path);
+			const info = await stat(entry.path);
 			files.push({
 				path: entry.path,
 				relativePath: rel,
 				name: entry.name,
-				size: stat.size,
-				mtime: stat.mtime ?? new Date(0),
+				size: info.size,
+				mtime: info.mtime ?? new Date(0),
 			});
 		} catch {
 			// file vanished between readDir and stat — skip

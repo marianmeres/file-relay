@@ -1,0 +1,38 @@
+{
+  "name": "@marianmeres/file-relay",
+  "exports": {
+    ".": "./src/cli.ts",
+    "./mod": "./src/mod.ts",
+    "./install": "./src/install.ts"
+  },
+  "imports": {
+    "@marianmeres/clog": "jsr:@marianmeres/clog@^3.21.0",
+    "@marianmeres/parse-boolean": "jsr:@marianmeres/parse-boolean@^2.1.0",
+    "@marianmeres/send-email": "jsr:@marianmeres/send-email@^1.0.0"
+  },
+  "nodeModulesDir": "none",
+  "compilerOptions": {
+    "lib": ["deno.window"]
+  },
+  "publish": {
+    "include": [
+      "src/**/*.ts",
+      "tests/**/*.ts",
+      "scripts/**/*.ts",
+      "example/file-relay-example.ts",
+      "example/.env.example",
+      "example2/.env.example",
+      "example2/config.json",
+      "example2/deno.json",
+      "example2/source/**",
+      "README.md",
+      "API.md",
+      "AGENTS.md",
+      "CLAUDE.md",
+      "LICENSE",
+      "mcp-include.txt",
+      ".editorconfig"
+    ],
+    "exclude": ["src/bin.ts"]
+  }
+}
