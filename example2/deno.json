@@ -1,5 +1,5 @@
 {
-	"tasks": {
-		"backup": "deno run -A --env-file=.env jsr:@marianmeres/file-relay config.json"
-	}
+  "tasks": {
+    "backup": "deno run -A --env-file=.env jsr:@marianmeres/file-relay config.json"
+  }
 }

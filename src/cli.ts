@@ -17,8 +17,8 @@ import { hostname } from "node:os";
 import process from "node:process";
 import { createClog } from "@marianmeres/clog";
 import { loadConfig } from "./config.ts";
-import { relay, type RelayRunResult } from "./relay.ts";
 import { type NotifyContext, sendNotification, shouldNotify } from "./notify.ts";
+import { type RelayRunResult, relay } from "./relay.ts";
 import { VERSION } from "./version.ts";
 
 /** Best-effort machine identifier for notification subject/body. */
@@ -41,7 +41,8 @@ function formatCapturedLine(data: Record<string, any>): string {
 }
 
 function printHelp() {
-	console.log(`
+	console.log(
+		`
 file-relay v${VERSION}
 
 Transfer local files to a remote destination based on config.
@@ -67,21 +68,22 @@ Options:
 Signals:
   SIGINT / SIGTERM         Abort gracefully — finish in-flight transfer(s)
                            and exit with a non-zero code.
-`.trim());
+`.trim(),
+	);
 }
 
 /** Parsed command line, or the exit code to stop with right away. */
 type ParsedArgs =
 	| { exit: number }
 	| {
-		exit?: undefined;
-		configPath: string;
-		dryRun: boolean;
-		verbose: boolean;
-		noNotify: boolean;
-		concurrency: number | undefined;
-		retryAttempts: number | undefined;
-	};
+			exit?: undefined;
+			configPath: string;
+			dryRun: boolean;
+			verbose: boolean;
+			noNotify: boolean;
+			concurrency: number | undefined;
+			retryAttempts: number | undefined;
+	  };
 
 function parseArgs(args: string[]): ParsedArgs {
 	let configPath: string | null = null;
@@ -171,9 +173,7 @@ export async function runCli(args: string[]): Promise<number> {
 	try {
 		config = await loadConfig(configPath);
 	} catch (err) {
-		console.error(
-			`Config error: ${err instanceof Error ? err.message : err}`,
-		);
+		console.error(`Config error: ${err instanceof Error ? err.message : err}`);
 		return 2;
 	}
 
@@ -185,11 +185,11 @@ export async function runCli(args: string[]): Promise<number> {
 				...(concurrency !== undefined ? { concurrency } : {}),
 				...(retryAttempts !== undefined
 					? {
-						retry: {
-							...(config.transfer?.retry ?? {}),
-							attempts: retryAttempts,
-						},
-					}
+							retry: {
+								...(config.transfer?.retry ?? {}),
+								attempts: retryAttempts,
+							},
+						}
 					: {}),
 			},
 		};

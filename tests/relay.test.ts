@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import { createClog, createNoopClog } from "@marianmeres/clog";
 import { type ClogFn, relay } from "../src/relay.ts";
 import { cleanup, createFile, createTempDir, serve } from "./_helpers.ts";
-import { join } from "node:path";
 
 // suppress debug output in tests
 createClog.global.debug = false;
@@ -38,20 +38,14 @@ test("relay - full flow: find, transfer, track", async () => {
 		);
 
 		// verify files exist at destination
-		const d1 = await fs.readFile(
-			join(destDir, "daily/pg-001.sql.gz"), "utf8",
-		);
+		const d1 = await fs.readFile(join(destDir, "daily/pg-001.sql.gz"), "utf8");
 		assert.deepStrictEqual(d1, "data1");
 
-		const d2 = await fs.readFile(
-			join(destDir, "weekly/pg-002.sql.gz"), "utf8",
-		);
+		const d2 = await fs.readFile(join(destDir, "weekly/pg-002.sql.gz"), "utf8");
 		assert.deepStrictEqual(d2, "data2");
 
 		// verify tracker markers exist
-		const m1 = await fs.stat(
-			join(trackDir, "daily/pg-001.sql.gz.transferred.json"),
-		);
+		const m1 = await fs.stat(join(trackDir, "daily/pg-001.sql.gz.transferred.json"));
 		assert.deepStrictEqual(m1.isFile(), true);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
@@ -310,7 +304,10 @@ test("relay - concurrency transfers multiple files in parallel", async () => {
 		);
 		assert.deepStrictEqual(r.status, "ok");
 		assert.deepStrictEqual(r.transfers.length, 10);
-		assert.deepStrictEqual(r.transfers.every((t) => t.success), true);
+		assert.deepStrictEqual(
+			r.transfers.every((t) => t.success),
+			true,
+		);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}

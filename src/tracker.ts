@@ -18,10 +18,7 @@ export interface Tracker {
 	/** Check if file (by relative path) was already successfully transferred. */
 	isTransferred(relativePath: string): Promise<boolean>;
 	/** Mark a file as successfully transferred, writing marker with metadata. */
-	markTransferred(
-		relativePath: string,
-		meta: TransferMeta,
-	): Promise<void>;
+	markTransferred(relativePath: string, meta: TransferMeta): Promise<void>;
 	/**
 	 * Remove stray `*.transferred.json.tmp` files left behind by a previous
 	 * crash between write and rename. Safe to call at the start of every run.
@@ -56,19 +53,14 @@ export function createTracker(trackDir: string): Tracker {
 	return {
 		async isTransferred(relativePath: string): Promise<boolean> {
 			try {
-				const info = await stat(
-					markerPath(trackDir, relativePath),
-				);
+				const info = await stat(markerPath(trackDir, relativePath));
 				return info.isFile();
 			} catch {
 				return false;
 			}
 		},
 
-		async markTransferred(
-			relativePath: string,
-			meta: TransferMeta,
-		): Promise<void> {
+		async markTransferred(relativePath: string, meta: TransferMeta): Promise<void> {
 			const mp = markerPath(trackDir, relativePath);
 			await mkdir(dirname(mp), { recursive: true });
 			const content = JSON.stringify(meta, null, "\t");

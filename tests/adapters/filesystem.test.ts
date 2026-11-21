@@ -1,16 +1,12 @@
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import { createFilesystemAdapter } from "../../src/adapters/filesystem.ts";
-import { cleanup, createFile, createTempDir } from "../_helpers.ts";
-import { join } from "node:path";
 import type { FileInfo } from "../../src/file-finder.ts";
+import { cleanup, createFile, createTempDir } from "../_helpers.ts";
 
-function makeFileInfo(
-	dir: string,
-	relativePath: string,
-	size: number,
-): FileInfo {
+function makeFileInfo(dir: string, relativePath: string, size: number): FileInfo {
 	return {
 		path: join(dir, relativePath),
 		relativePath,
@@ -44,9 +40,7 @@ test("filesystem adapter - copies file to destination", async () => {
 		assert.deepStrictEqual(result.bytesTransferred, fileInfo.size);
 
 		// verify file exists at destination
-		const destContent = await fs.readFile(
-			join(destDir, "backup.sql.gz"), "utf8",
-		);
+		const destContent = await fs.readFile(join(destDir, "backup.sql.gz"), "utf8");
 		assert.deepStrictEqual(destContent, content);
 	} finally {
 		await cleanup(srcDir, destDir);
@@ -76,7 +70,8 @@ test("filesystem adapter - creates subdirectories", async () => {
 		assert.deepStrictEqual(result.success, true);
 
 		const destContent = await fs.readFile(
-			join(destDir, "daily/pg-20260318.sql.gz"), "utf8",
+			join(destDir, "daily/pg-20260318.sql.gz"),
+			"utf8",
 		);
 		assert.deepStrictEqual(destContent, content);
 	} finally {
@@ -92,11 +87,7 @@ test("filesystem adapter - reports error for missing source", async () => {
 			dir: destDir,
 		});
 
-		const fileInfo = makeFileInfo(
-			"/nonexistent",
-			"missing.sql.gz",
-			100,
-		);
+		const fileInfo = makeFileInfo("/nonexistent", "missing.sql.gz", 100);
 
 		const result = await adapter.transfer(fileInfo);
 

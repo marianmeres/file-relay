@@ -208,10 +208,16 @@ test("upload relay: streams to the server, then the process exits on its own", a
 				token: "${FILE_RELAY_E2E_TOKEN}",
 			},
 		});
-		await createFile(join(config, ".."), "source/db/dump.sql.gz", "x".repeat(200_000));
+		await createFile(
+			join(config, ".."),
+			"source/db/dump.sql.gz",
+			"x".repeat(200_000),
+		);
 		const r = await cli([config], { env: { FILE_RELAY_E2E_TOKEN: "t" } });
 		assert.equal(r.code, 0, r.stderr);
-		assert.deepStrictEqual(received, [{ path: "/backups/db/dump.sql.gz", size: 200_000 }]);
+		assert.deepStrictEqual(received, [
+			{ path: "/backups/db/dump.sql.gz", size: 200_000 },
+		]);
 	} finally {
 		controller.abort();
 		await server.finished;

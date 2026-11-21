@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { NotifyConfig } from "../src/config.ts";
 import {
 	buildNotificationMessage,
 	type NotifyContext,
 	shouldNotify,
 } from "../src/notify.ts";
-import type { NotifyConfig } from "../src/config.ts";
 import type { RelayRunResult, RelayStatus } from "../src/relay.ts";
 
 function makeResult(
@@ -48,16 +48,14 @@ const okCtx: NotifyContext = {
 };
 
 test("notify - shouldNotify always returns true for any status", () => {
-	for (
-		const s of [
-			"ok",
-			"idle",
-			"partial",
-			"failed",
-			"preflight-failed",
-			"aborted",
-		] as RelayStatus[]
-	) {
+	for (const s of [
+		"ok",
+		"idle",
+		"partial",
+		"failed",
+		"preflight-failed",
+		"aborted",
+	] as RelayStatus[]) {
 		assert.ok(shouldNotify("always", { result: makeResult(s), logText: "" }));
 	}
 	// also for a fatal error
@@ -79,14 +77,12 @@ test("notify - shouldNotify failure only fires on abnormal runs", () => {
 		shouldNotify("failure", { result: makeResult("idle"), logText: "" }),
 		false,
 	);
-	for (
-		const s of [
-			"partial",
-			"failed",
-			"preflight-failed",
-			"aborted",
-		] as RelayStatus[]
-	) {
+	for (const s of [
+		"partial",
+		"failed",
+		"preflight-failed",
+		"aborted",
+	] as RelayStatus[]) {
 		assert.deepStrictEqual(
 			shouldNotify("failure", { result: makeResult(s), logText: "" }),
 			true,
@@ -156,27 +152,25 @@ test("notify - buildNotificationMessage failure counts succeeded/failed", () => 
 });
 
 test("notify - buildNotificationMessage passes through cc/bcc/replyTo", () => {
-	const msg = buildNotificationMessage({
-		...baseConfig,
-		replyTo: "me@host",
-		cc: ["a@host", "b@host"],
-		bcc: "c@host",
-	}, okCtx);
+	const msg = buildNotificationMessage(
+		{
+			...baseConfig,
+			replyTo: "me@host",
+			cc: ["a@host", "b@host"],
+			bcc: "c@host",
+		},
+		okCtx,
+	);
 	assert.deepStrictEqual(msg.replyTo, "me@host");
 	assert.deepStrictEqual(msg.cc, ["a@host", "b@host"]);
 	assert.deepStrictEqual(msg.bcc, "c@host");
 });
 
 test("notify - buildNotificationMessage attachLog adds a .log attachment", () => {
-	const msg = buildNotificationMessage(
-		{ ...baseConfig, attachLog: true },
-		okCtx,
-	);
+	const msg = buildNotificationMessage({ ...baseConfig, attachLog: true }, okCtx);
 	assert.deepStrictEqual(msg.attachments?.length, 1);
 	assert.deepStrictEqual(msg.attachments?.[0].filename, "file-relay.log");
-	assert.ok(
-		String(msg.attachments?.[0].content ?? "").includes("Starting relay run"),
-	);
+	assert.ok(String(msg.attachments?.[0].content ?? "").includes("Starting relay run"));
 });
 
 test("notify - buildNotificationMessage with empty log omits the divider", () => {

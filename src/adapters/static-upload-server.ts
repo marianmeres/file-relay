@@ -1,7 +1,7 @@
 import type { ReadStream } from "node:fs";
 import { open } from "node:fs/promises";
-import type { FileInfo } from "../file-finder.ts";
 import type { StaticUploadMode, StaticUploadServerDestination } from "../config.ts";
+import type { FileInfo } from "../file-finder.ts";
 import type {
 	CheckResult,
 	RelayAdapter,
@@ -11,8 +11,11 @@ import type {
 
 /** Escape quotes and CR/LF in a multipart `filename` header parameter. */
 function escapeFilename(name: string): string {
-	return name.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
-		.replace(/\r/g, "").replace(/\n/g, "");
+	return name
+		.replace(/\\/g, "\\\\")
+		.replace(/"/g, '\\"')
+		.replace(/\r/g, "")
+		.replace(/\n/g, "");
 }
 
 /** Build a unique multipart boundary string. */
@@ -51,10 +54,11 @@ function buildMultipartStream(
 	footer: Uint8Array;
 } {
 	const enc = new TextEncoder();
-	const headerStr = `--${boundary}\r\n` +
-		`Content-Disposition: form-data; name="file"; filename="${
-			escapeFilename(filename)
-		}"\r\n` +
+	const headerStr =
+		`--${boundary}\r\n` +
+		`Content-Disposition: form-data; name="file"; filename="${escapeFilename(
+			filename,
+		)}"\r\n` +
 		`Content-Type: application/octet-stream\r\n\r\n`;
 	const footerStr = `\r\n--${boundary}--\r\n`;
 	const header = enc.encode(headerStr);
@@ -148,7 +152,10 @@ function formatThrown(err: unknown, depth = 0): string {
 	const lines = [`${indent}${err.name}: ${err.message}`];
 	if (err.stack) {
 		lines.push(
-			...err.stack.split("\n").slice(1).map((l) => `${indent}${l.trim()}`),
+			...err.stack
+				.split("\n")
+				.slice(1)
+				.map((l) => `${indent}${l.trim()}`),
 		);
 	}
 	if (err.cause !== undefined && depth < 3) {
@@ -211,13 +218,11 @@ export function createStaticUploadServerAdapter(
 			options?: TransferOptions,
 		): Promise<TransferResult> {
 			const start = performance.now();
-			const url = mode === "put"
-				? buildPutUrl(config.url, file.relativePath)
-				: config.url;
+			const url =
+				mode === "put" ? buildPutUrl(config.url, file.relativePath) : config.url;
 			const method = mode === "put" ? "PUT" : "POST";
-			const destination = mode === "put"
-				? url
-				: `${config.url} -> ${file.relativePath}`;
+			const destination =
+				mode === "put" ? url : `${config.url} -> ${file.relativePath}`;
 
 			const controller = new AbortController();
 			// Track *why* we aborted — otherwise a timeout and a caller-issued
@@ -258,10 +263,12 @@ export function createStaticUploadServerAdapter(
 				// own error rather than later, inside fetch().
 				const fh = await open(file.path, "r");
 				fileStream = fh.createReadStream();
-				const fileBody = ReadableStream.from(fileStream) as ReadableStream<Uint8Array>;
+				const fileBody = ReadableStream.from(
+					fileStream,
+				) as ReadableStream<Uint8Array>;
 
 				const headers: Record<string, string> = {
-					"Authorization": `Bearer ${config.token}`,
+					Authorization: `Bearer ${config.token}`,
 				};
 				let body: ReadableStream<Uint8Array>;
 
@@ -294,17 +301,19 @@ export function createStaticUploadServerAdapter(
 					const { text, note } = await readErrorBody(response);
 					// A PUT against a pre-1.7.0 server lands on an unrouted path
 					// and 404s, which otherwise reads as a bad URL.
-					const hint = mode === "put" && response.status === 404
-						? ` — the PUT route requires deno-static-upload-server >= 1.7.0;` +
-							` set destination.mode = "multipart" for an older server`
-						: "";
+					const hint =
+						mode === "put" && response.status === 404
+							? ` — the PUT route requires deno-static-upload-server >= 1.7.0;` +
+								` set destination.mode = "multipart" for an older server`
+							: "";
 					return {
 						success: false,
 						sourceFile: file,
 						destination,
-						error: `HTTP ${response.status}: ${
-							summarizeBody(text, response)
-						}${hint}`,
+						error: `HTTP ${response.status}: ${summarizeBody(
+							text,
+							response,
+						)}${hint}`,
 						errorDetail: [
 							...requestLines(),
 							``,
@@ -326,7 +335,7 @@ export function createStaticUploadServerAdapter(
 				let uploaded: string[] = [];
 				let storedSize: number | undefined;
 				try {
-					const parsed = await response.json() as {
+					const parsed = (await response.json()) as {
 						uploaded?: string[];
 						size?: number;
 					};
@@ -349,7 +358,8 @@ export function createStaticUploadServerAdapter(
 						success: false,
 						sourceFile: file,
 						destination,
-						error: `Size mismatch: sent ${file.size} bytes,` +
+						error:
+							`Size mismatch: sent ${file.size} bytes,` +
 							` server stored ${storedSize}`,
 						errorDetail: [
 							...requestLines(),

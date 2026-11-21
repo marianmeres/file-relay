@@ -1,7 +1,7 @@
-import type { FileInfo } from "../file-finder.ts";
 import type { DestinationConfig } from "../config.ts";
-import { createStaticUploadServerAdapter } from "./static-upload-server.ts";
+import type { FileInfo } from "../file-finder.ts";
 import { createFilesystemAdapter } from "./filesystem.ts";
+import { createStaticUploadServerAdapter } from "./static-upload-server.ts";
 
 /** Result of a single file transfer attempt. */
 export interface TransferResult {

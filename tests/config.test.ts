@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
+import { join } from "node:path";
 import process from "node:process";
 import { test } from "node:test";
 import { loadConfig, validateConfig } from "../src/config.ts";
 import { cleanup, createTempDir } from "./_helpers.ts";
-import { join } from "node:path";
 
 test("config - validates a correct static-upload-server config", () => {
 	const config = validateConfig({
@@ -82,10 +82,7 @@ test("config - resolves relative paths against baseDir", () => {
 	assert.deepStrictEqual(config.logDir, "/base/dir/log");
 	assert.deepStrictEqual(config.trackDir, "/base/dir/track");
 	assert.deepStrictEqual(config.source.dir, "/base/dir/source");
-	assert.deepStrictEqual(
-		(config.destination as { dir: string }).dir,
-		"/base/dir/dest",
-	);
+	assert.deepStrictEqual((config.destination as { dir: string }).dir, "/base/dir/dest");
 });
 
 test("config - resolves relative paths against cwd when no baseDir", () => {
@@ -159,10 +156,7 @@ test("config - applies default timeout", () => {
 		},
 	});
 
-	assert.deepStrictEqual(
-		(config.destination as { timeout: number }).timeout,
-		300_000,
-	);
+	assert.deepStrictEqual((config.destination as { timeout: number }).timeout, 300_000);
 });
 
 test("config - loadConfig with env var interpolation", async () => {
@@ -217,7 +211,8 @@ test("config - loadConfig rejects missing env var", async () => {
 
 		await assert.rejects(
 			() => loadConfig(configPath),
-			(e: unknown) => e instanceof Error && e.message.includes("NONEXISTENT_VAR_12345"),
+			(e: unknown) =>
+				e instanceof Error && e.message.includes("NONEXISTENT_VAR_12345"),
 		);
 	} finally {
 		await cleanup(tmpDir);
@@ -261,7 +256,8 @@ test("config - rejects non-array match", () => {
 				source: { dir: "/data", match: "not-array" },
 				destination: { adapter: "filesystem", dir: "/mnt" },
 			}),
-		(e: unknown) => e instanceof Error && e.message.includes('"source.match" must be an array'),
+		(e: unknown) =>
+			e instanceof Error && e.message.includes('"source.match" must be an array'),
 	);
 });
 
@@ -274,7 +270,9 @@ test("config - rejects non-string entries in ignore", () => {
 				source: { dir: "/data", ignore: [123] },
 				destination: { adapter: "filesystem", dir: "/mnt" },
 			}),
-		(e: unknown) => e instanceof Error && e.message.includes('"source.ignore" entries must be strings'),
+		(e: unknown) =>
+			e instanceof Error &&
+			e.message.includes('"source.ignore" entries must be strings'),
 	);
 });
 
@@ -318,10 +316,7 @@ test("config - trailing slash on absolute path does not re-join baseDir", () => 
 	assert.deepStrictEqual(config.logDir, "/tmp/logs");
 	assert.deepStrictEqual(config.trackDir, "/tmp/track");
 	assert.deepStrictEqual(config.source.dir, "/data/backups");
-	assert.deepStrictEqual(
-		(config.destination as { dir: string }).dir,
-		"/mnt/dest",
-	);
+	assert.deepStrictEqual((config.destination as { dir: string }).dir, "/mnt/dest");
 });
 
 test("config - validates transfer.concurrency and retry", () => {
@@ -381,10 +376,7 @@ test("config - validates filesystem verify mode", () => {
 			verify: "sha256",
 		},
 	});
-	assert.deepStrictEqual(
-		(config.destination as { verify: string }).verify,
-		"sha256",
-	);
+	assert.deepStrictEqual((config.destination as { verify: string }).verify, "sha256");
 });
 
 test("config - rejects unknown verify mode", () => {
@@ -504,7 +496,9 @@ test("config - rejects unrecognized boolean string (fail-loud)", () => {
 					smtp: { host: "smtp.example.com", secure: "treu" },
 				},
 			}),
-		(e: unknown) => e instanceof Error && e.message.includes('"notify.smtp.secure" must be a boolean'),
+		(e: unknown) =>
+			e instanceof Error &&
+			e.message.includes('"notify.smtp.secure" must be a boolean'),
 	);
 });
 
@@ -522,7 +516,8 @@ test("config - rejects non-positive notify.smtp.connectionTimeout", () => {
 					smtp: { host: "smtp", connectionTimeout: 0 },
 				},
 			}),
-		(e: unknown) => e instanceof Error && e.message.includes('"notify.smtp.connectionTimeout"'),
+		(e: unknown) =>
+			e instanceof Error && e.message.includes('"notify.smtp.connectionTimeout"'),
 	);
 });
 

@@ -5,9 +5,7 @@ import { join } from "node:path";
 import type { FileRelayConfig } from "../src/config.ts";
 
 /** Create a temp directory and return its path. */
-export async function createTempDir(
-	prefix = "file-relay-test",
-): Promise<string> {
+export async function createTempDir(prefix = "file-relay-test"): Promise<string> {
 	return await fs.mkdtemp(join(tmpdir(), prefix));
 }
 
@@ -123,9 +121,7 @@ export function serve(
 				method: incoming.method,
 				headers,
 				signal: gone.signal,
-				...(hasBody
-					? { body: requestBody(incoming), duplex: "half" }
-					: {}),
+				...(hasBody ? { body: requestBody(incoming), duplex: "half" } : {}),
 			} as RequestInit);
 			response = await handler(req);
 		} catch {

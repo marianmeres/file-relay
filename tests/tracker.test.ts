@@ -1,18 +1,15 @@
 import assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import { createTracker } from "../src/tracker.ts";
 import { cleanup, createTempDir } from "./_helpers.ts";
-import { join } from "node:path";
 
 test("tracker - isTransferred returns false for untracked file", async () => {
 	const dir = await createTempDir();
 	try {
 		const tracker = createTracker(dir);
-		assert.deepStrictEqual(
-			await tracker.isTransferred("daily/backup.sql.gz"),
-			false,
-		);
+		assert.deepStrictEqual(await tracker.isTransferred("daily/backup.sql.gz"), false);
 	} finally {
 		await cleanup(dir);
 	}
@@ -30,17 +27,12 @@ test("tracker - markTransferred creates marker file", async () => {
 		});
 
 		// marker file should exist
-		const markerPath = join(
-			dir,
-			"daily/backup.sql.gz.transferred.json",
-		);
+		const markerPath = join(dir, "daily/backup.sql.gz.transferred.json");
 		const stat = await fs.stat(markerPath);
 		assert.deepStrictEqual(stat.isFile(), true);
 
 		// verify content
-		const content = JSON.parse(
-			await fs.readFile(markerPath, "utf8"),
-		);
+		const content = JSON.parse(await fs.readFile(markerPath, "utf8"));
 		assert.deepStrictEqual(content.sourcePath, "/data/backups/daily/backup.sql.gz");
 		assert.deepStrictEqual(content.sourceSize, 1024);
 	} finally {
@@ -105,22 +97,14 @@ test("tracker - sweepTmp removes stale .tmp markers", async () => {
 
 		// plant a stale .tmp marker
 		await fs.mkdir(join(dir, "stale"), { recursive: true });
-		await fs.writeFile(
-			join(dir, "stale/file.gz.transferred.json.tmp"),
-			"{}",
-		);
-		await fs.writeFile(
-			join(dir, "keep/file.gz.transferred.json.tmp"),
-			"{}",
-		);
+		await fs.writeFile(join(dir, "stale/file.gz.transferred.json.tmp"), "{}");
+		await fs.writeFile(join(dir, "keep/file.gz.transferred.json.tmp"), "{}");
 
 		const removed = await tracker.sweepTmp();
 		assert.deepStrictEqual(removed, 2);
 
 		// valid marker should still exist
-		const stat = await fs.stat(
-			join(dir, "keep/file.gz.transferred.json"),
-		);
+		const stat = await fs.stat(join(dir, "keep/file.gz.transferred.json"));
 		assert.deepStrictEqual(stat.isFile(), true);
 
 		// stale .tmp files should be gone
@@ -157,18 +141,9 @@ test("tracker - different relative paths tracked independently", async () => {
 		await tracker.markTransferred("daily/file.gz", meta);
 		await tracker.markTransferred("weekly/file.gz", meta);
 
-		assert.deepStrictEqual(
-			await tracker.isTransferred("daily/file.gz"),
-			true,
-		);
-		assert.deepStrictEqual(
-			await tracker.isTransferred("weekly/file.gz"),
-			true,
-		);
-		assert.deepStrictEqual(
-			await tracker.isTransferred("monthly/file.gz"),
-			false,
-		);
+		assert.deepStrictEqual(await tracker.isTransferred("daily/file.gz"), true);
+		assert.deepStrictEqual(await tracker.isTransferred("weekly/file.gz"), true);
+		assert.deepStrictEqual(await tracker.isTransferred("monthly/file.gz"), false);
 	} finally {
 		await cleanup(dir);
 	}

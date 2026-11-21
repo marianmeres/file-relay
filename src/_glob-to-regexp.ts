@@ -117,13 +117,19 @@ function _globToRegExp(
 		let i = j;
 
 		// Terminates with `i` at the non-inclusive end of the current segment.
-		for (; i < glob.length && !(c.seps.includes(glob[i]!) && groupStack.length === 0); i++) {
+		for (
+			;
+			i < glob.length && !(c.seps.includes(glob[i]!) && groupStack.length === 0);
+			i++
+		) {
 			if (inEscape) {
 				inEscape = false;
 				const escapeChars = (inRange
 					? RANGE_ESCAPE_CHARS
 					: REG_EXP_ESCAPE_CHARS) as unknown as EscapeChar[];
-				segment += escapeChars.includes(glob[i]! as EscapeChar) ? `\\${glob[i]}` : glob[i];
+				segment += escapeChars.includes(glob[i]! as EscapeChar)
+					? `\\${glob[i]}`
+					: glob[i];
 				continue;
 			}
 
@@ -295,7 +301,9 @@ function _globToRegExp(
 			// Parse failure. Take all characters from this segment literally.
 			segment = "";
 			for (const c of glob.slice(j, i)) {
-				segment += REG_EXP_ESCAPE_CHARS.includes(c as RegExpEscapeChar) ? `\\${c}` : c;
+				segment += REG_EXP_ESCAPE_CHARS.includes(c as RegExpEscapeChar)
+					? `\\${c}`
+					: c;
 				endsWithSep = false;
 			}
 		}

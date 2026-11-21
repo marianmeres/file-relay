@@ -41,10 +41,22 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PKG = "@marianmeres/file-relay";
 const BIN = "file-relay";
-const DEPS = ["@marianmeres/clog", "@marianmeres/parse-boolean", "@marianmeres/send-email"];
+const DEPS = [
+	"@marianmeres/clog",
+	"@marianmeres/parse-boolean",
+	"@marianmeres/send-email",
+];
 
 /** Repo directories the published tarball must not carry. */
-const REPO_ONLY = ["src", "tests", "scripts", "tmp", "example", "example2", "node_modules"];
+const REPO_ONLY = [
+	"src",
+	"tests",
+	"scripts",
+	"tmp",
+	"example",
+	"example2",
+	"node_modules",
+];
 
 /** Step 4: a library consumer. */
 const LIBRARY = `

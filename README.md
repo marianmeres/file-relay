@@ -171,31 +171,31 @@ anything ending in `-latest.sql.gz`:
 Uploads to a
 [@marianmeres/deno-static-upload-server](https://jsr.io/@marianmeres/deno-static-upload-server) instance.
 
-| Field     | Type                     | Default  | Description                              |
-| --------- | ------------------------ | -------- | ---------------------------------------- |
-| `adapter` | `"static-upload-server"` | required | Adapter type                             |
-| `url`     | `string`                 | required | Server URL including project path        |
-| `token`   | `string`                 | required | Bearer token for auth                    |
-| `timeout` | `number`                 | `300000` | Request timeout in ms                    |
-| `mode`    | `"put" \| "multipart"`   | `"put"`  | Wire format — see below                  |
+| Field     | Type                     | Default  | Description                       |
+| --------- | ------------------------ | -------- | --------------------------------- |
+| `adapter` | `"static-upload-server"` | required | Adapter type                      |
+| `url`     | `string`                 | required | Server URL including project path |
+| `token`   | `string`                 | required | Bearer token for auth             |
+| `timeout` | `number`                 | `300000` | Request timeout in ms             |
+| `mode`    | `"put" \| "multipart"`   | `"put"`  | Wire format — see below           |
 
 #### `mode` — and why the default matters for large files
 
-- **`"put"` (default)** — raw-body `PUT {url}/{relativePath}`. The request body *is*
+- **`"put"` (default)** — raw-body `PUT {url}/{relativePath}`. The request body _is_
   the file. Requires **deno-static-upload-server >= 1.7.0**.
 - **`"multipart"`** — legacy `multipart/form-data` POST. Only for servers older than
   1.7.0, which have no PUT route.
 
-file-relay streams the file off disk in both modes, so *its* memory use is flat either
+file-relay streams the file off disk in both modes, so _its_ memory use is flat either
 way. The difference is what the **server** does. Multipart makes it parse the whole
 upload into memory before writing a byte; PUT lets it stream straight to disk. Measured
 peak RSS on the upload server, same 1.7.0 build:
 
-| Upload   | `mode: "put"` | `mode: "multipart"` |
-| -------- | ------------- | ------------------- |
-| 50 MB    | 105 MB        | 214 MB              |
-| 150 MB   | 159 MB        | 515 MB              |
-| 300 MB   | 235 MB        | 993 MB              |
+| Upload | `mode: "put"` | `mode: "multipart"` |
+| ------ | ------------- | ------------------- |
+| 50 MB  | 105 MB        | 214 MB              |
+| 150 MB | 159 MB        | 515 MB              |
+| 300 MB | 235 MB        | 993 MB              |
 
 Multipart costs the server roughly **3× the file size** in RSS, which is enough to kill a
 modest host on a 100 MB+ backup. PUT's overhead is GC churn, not retention — pushing
@@ -272,23 +272,23 @@ log output. Uses [@marianmeres/send-email](https://www.npmjs.com/package/@marian
 }
 ```
 
-| Field           | Type                   | Default          | Description                                                |
-| --------------- | ---------------------- | ---------------- | ---------------------------------------------------------- |
-| `to`            | `string \| string[]`   | required         | Recipient address(es)                                      |
-| `from`          | `string`               | required         | Sender address                                             |
-| `on`            | `"always" \| "failure"`| `"always"`       | Send every run, or only on a failed/abnormal run           |
-| `subjectPrefix` | `string`               | `"[file-relay]"` | Prepended to every subject line                            |
-| `replyTo`       | `string`               | —                | Reply-To address                                           |
-| `cc` / `bcc`    | `string \| string[]`   | —                | Carbon-copy recipient(s)                                   |
-| `attachLog`     | `boolean`              | `false`          | Also attach the captured output as a `.log` file           |
-| `smtp.host`     | `string`               | required         | SMTP server hostname                                       |
-| `smtp.port`     | `number`               | `587`            | SMTP port (`465` for implicit TLS)                         |
-| `smtp.secure`   | `boolean`              | `port === 465`   | Use implicit TLS                                           |
-| `smtp.user`     | `string`               | —                | SMTP AUTH username (set together with `pass`)              |
-| `smtp.pass`     | `string`               | —                | SMTP AUTH password (set together with `user`)              |
-| `smtp.connectionTimeout` | `number`      | —                | Connect timeout (ms) — keep modest so a dead SMTP host can't stall the cron |
-| `smtp.socketTimeout` | `number`          | —                | Socket/data timeout (ms)                                   |
-| `smtp.tls`      | `object`               | —                | `{ servername?, rejectUnauthorized? }` TLS overrides       |
+| Field                    | Type                    | Default          | Description                                                                 |
+| ------------------------ | ----------------------- | ---------------- | --------------------------------------------------------------------------- |
+| `to`                     | `string \| string[]`    | required         | Recipient address(es)                                                       |
+| `from`                   | `string`                | required         | Sender address                                                              |
+| `on`                     | `"always" \| "failure"` | `"always"`       | Send every run, or only on a failed/abnormal run                            |
+| `subjectPrefix`          | `string`                | `"[file-relay]"` | Prepended to every subject line                                             |
+| `replyTo`                | `string`                | —                | Reply-To address                                                            |
+| `cc` / `bcc`             | `string \| string[]`    | —                | Carbon-copy recipient(s)                                                    |
+| `attachLog`              | `boolean`               | `false`          | Also attach the captured output as a `.log` file                            |
+| `smtp.host`              | `string`                | required         | SMTP server hostname                                                        |
+| `smtp.port`              | `number`                | `587`            | SMTP port (`465` for implicit TLS)                                          |
+| `smtp.secure`            | `boolean`               | `port === 465`   | Use implicit TLS                                                            |
+| `smtp.user`              | `string`                | —                | SMTP AUTH username (set together with `pass`)                               |
+| `smtp.pass`              | `string`                | —                | SMTP AUTH password (set together with `user`)                               |
+| `smtp.connectionTimeout` | `number`                | —                | Connect timeout (ms) — keep modest so a dead SMTP host can't stall the cron |
+| `smtp.socketTimeout`     | `number`                | —                | Socket/data timeout (ms)                                                    |
+| `smtp.tls`               | `object`                | —                | `{ servername?, rejectUnauthorized? }` TLS overrides                        |
 
 `on: "failure"` fires when the run status is `failed`, `partial`, `preflight-failed`,
 or `aborted`, or when a fatal error is thrown. A subject like

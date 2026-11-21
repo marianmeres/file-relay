@@ -16,6 +16,13 @@
  */
 
 export type {
+	CheckResult,
+	RelayAdapter,
+	TransferOptions,
+	TransferResult,
+} from "./adapters/adapter.ts";
+export { createAdapter } from "./adapters/adapter.ts";
+export type {
 	DestinationConfig,
 	FileRelayConfig,
 	FilesystemCopyDestination,
@@ -29,20 +36,9 @@ export type {
 	TransferConfig,
 } from "./config.ts";
 export { loadConfig, validateConfig } from "./config.ts";
-
 export type { FileInfo } from "./file-finder.ts";
 export { findFiles } from "./file-finder.ts";
-
-export type { Tracker, TransferMeta } from "./tracker.ts";
-export { createTracker } from "./tracker.ts";
-
-export type {
-	CheckResult,
-	RelayAdapter,
-	TransferOptions,
-	TransferResult,
-} from "./adapters/adapter.ts";
-export { createAdapter } from "./adapters/adapter.ts";
-
 export type { ClogFn, RelayOptions, RelayRunResult, RelayStatus } from "./relay.ts";
 export { relay } from "./relay.ts";
+export type { Tracker, TransferMeta } from "./tracker.ts";
+export { createTracker } from "./tracker.ts";

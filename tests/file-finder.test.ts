@@ -57,24 +57,9 @@ test("file-finder - sorts by mtime descending", async () => {
 	const dir = await createTempDir();
 	try {
 		const now = Date.now();
-		await createFile(
-			dir,
-			"old.sql.gz",
-			"old",
-			new Date(now - 3000),
-		);
-		await createFile(
-			dir,
-			"newest.sql.gz",
-			"new",
-			new Date(now),
-		);
-		await createFile(
-			dir,
-			"mid.sql.gz",
-			"mid",
-			new Date(now - 1000),
-		);
+		await createFile(dir, "old.sql.gz", "old", new Date(now - 3000));
+		await createFile(dir, "newest.sql.gz", "new", new Date(now));
+		await createFile(dir, "mid.sql.gz", "mid", new Date(now - 1000));
 
 		const files = await findFiles({ dir, glob: "*.sql.gz" });
 
@@ -134,10 +119,7 @@ test("file-finder - skips symlinks by default", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "real.sql.gz", "data");
-		await fs.symlink(
-			`${dir}/real.sql.gz`,
-			`${dir}/link.sql.gz`,
-		);
+		await fs.symlink(`${dir}/real.sql.gz`, `${dir}/link.sql.gz`);
 
 		const files = await findFiles({
 			dir,
@@ -156,10 +138,7 @@ test("file-finder - follows symlinks when configured", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "real.sql.gz", "data");
-		await fs.symlink(
-			`${dir}/real.sql.gz`,
-			`${dir}/link.sql.gz`,
-		);
+		await fs.symlink(`${dir}/real.sql.gz`, `${dir}/link.sql.gz`);
 
 		const files = await findFiles({
 			dir,

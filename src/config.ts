@@ -81,9 +81,7 @@ export interface FilesystemCopyDestination {
 }
 
 /** Union of all supported destination configurations. Discriminated by `adapter` field. */
-export type DestinationConfig =
-	| StaticUploadServerDestination
-	| FilesystemCopyDestination;
+export type DestinationConfig = StaticUploadServerDestination | FilesystemCopyDestination;
 
 /** Retry policy for transient transfer failures. */
 export interface RetryConfig {
@@ -236,10 +234,7 @@ function interpolateDeep(obj: unknown): unknown {
 // Validation
 // -----------------------------------------------------------------------------
 
-function assertNonEmptyString(
-	val: unknown,
-	field: string,
-): asserts val is string {
+function assertNonEmptyString(val: unknown, field: string): asserts val is string {
 	if (typeof val !== "string" || val.trim() === "") {
 		throw new Error(`"${field}" must be a non-empty string`);
 	}
@@ -258,9 +253,7 @@ function assertBoolean(val: unknown, field: string): boolean {
 		try {
 			return parseBoolean(val, { strict: true });
 		} catch {
-			throw new Error(
-				`"${field}" must be a boolean (got ${JSON.stringify(val)})`,
-			);
+			throw new Error(`"${field}" must be a boolean (got ${JSON.stringify(val)})`);
 		}
 	}
 	throw new Error(`"${field}" must be a boolean`);
@@ -299,9 +292,7 @@ function validateSource(raw: unknown, baseDir?: string): SourceConfig {
 			}
 			for (const pattern of s[field]) {
 				if (typeof pattern !== "string") {
-					throw new Error(
-						`"source.${field}" entries must be strings`,
-					);
+					throw new Error(`"source.${field}" entries must be strings`);
 				}
 				try {
 					new RegExp(pattern);
@@ -315,9 +306,10 @@ function validateSource(raw: unknown, baseDir?: string): SourceConfig {
 			}
 		}
 	}
-	const followSymlinks = s.followSymlinks === undefined
-		? false
-		: assertBoolean(s.followSymlinks, "source.followSymlinks");
+	const followSymlinks =
+		s.followSymlinks === undefined
+			? false
+			: assertBoolean(s.followSymlinks, "source.followSymlinks");
 
 	return {
 		dir: resolvePath(s.dir as string, baseDir),
@@ -329,10 +321,7 @@ function validateSource(raw: unknown, baseDir?: string): SourceConfig {
 	};
 }
 
-function validateDestination(
-	raw: unknown,
-	baseDir?: string,
-): DestinationConfig {
+function validateDestination(raw: unknown, baseDir?: string): DestinationConfig {
 	if (!raw || typeof raw !== "object") {
 		throw new Error(`"destination" must be an object`);
 	}
@@ -348,16 +337,10 @@ function validateDestination(
 				d.timeout !== undefined &&
 				(typeof d.timeout !== "number" || d.timeout <= 0)
 			) {
-				throw new Error(
-					`"destination.timeout" must be a positive number`,
-				);
+				throw new Error(`"destination.timeout" must be a positive number`);
 			}
-			if (
-				d.mode !== undefined && d.mode !== "put" && d.mode !== "multipart"
-			) {
-				throw new Error(
-					`"destination.mode" must be "put" or "multipart"`,
-				);
+			if (d.mode !== undefined && d.mode !== "put" && d.mode !== "multipart") {
+				throw new Error(`"destination.mode" must be "put" or "multipart"`);
 			}
 			return {
 				adapter: "static-upload-server",
@@ -372,9 +355,7 @@ function validateDestination(
 			let verify: "size" | "sha256" = "size";
 			if (d.verify !== undefined) {
 				if (d.verify !== "size" && d.verify !== "sha256") {
-					throw new Error(
-						`"destination.verify" must be "size" or "sha256"`,
-					);
+					throw new Error(`"destination.verify" must be "size" or "sha256"`);
 				}
 				verify = d.verify;
 			}
@@ -407,9 +388,7 @@ function validateTransfer(raw: unknown): TransferConfig | undefined {
 			!Number.isInteger(t.concurrency) ||
 			t.concurrency < 1
 		) {
-			throw new Error(
-				`"transfer.concurrency" must be a positive integer`,
-			);
+			throw new Error(`"transfer.concurrency" must be a positive integer`);
 		}
 		out.concurrency = t.concurrency;
 	}
@@ -426,9 +405,7 @@ function validateTransfer(raw: unknown): TransferConfig | undefined {
 				!Number.isInteger(r.attempts) ||
 				r.attempts < 1
 			) {
-				throw new Error(
-					`"transfer.retry.attempts" must be a positive integer`,
-				);
+				throw new Error(`"transfer.retry.attempts" must be a positive integer`);
 			}
 			retry.attempts = r.attempts;
 		}
@@ -448,10 +425,7 @@ function validateTransfer(raw: unknown): TransferConfig | undefined {
 	return out;
 }
 
-function assertAddress(
-	val: unknown,
-	field: string,
-): string | string[] {
+function assertAddress(val: unknown, field: string): string | string[] {
 	if (typeof val === "string") {
 		if (val.trim() === "") {
 			throw new Error(`"${field}" must be a non-empty string`);
@@ -464,9 +438,7 @@ function assertAddress(
 		}
 		for (const entry of val) {
 			if (typeof entry !== "string" || entry.trim() === "") {
-				throw new Error(
-					`"${field}" entries must be non-empty strings`,
-				);
+				throw new Error(`"${field}" entries must be non-empty strings`);
 			}
 		}
 		return val as string[];
@@ -491,9 +463,7 @@ function validateNotifySmtp(raw: unknown): NotifySmtpConfig {
 			s.port < 1 ||
 			s.port > 65535
 		) {
-			throw new Error(
-				`"notify.smtp.port" must be an integer between 1 and 65535`,
-			);
+			throw new Error(`"notify.smtp.port" must be an integer between 1 and 65535`);
 		}
 		out.port = s.port;
 	}
@@ -504,7 +474,7 @@ function validateNotifySmtp(raw: unknown): NotifySmtpConfig {
 
 	for (const k of ["connectionTimeout", "socketTimeout"] as const) {
 		if (s[k] !== undefined) {
-			if (typeof s[k] !== "number" || !(s[k] as number > 0)) {
+			if (typeof s[k] !== "number" || !((s[k] as number) > 0)) {
 				throw new Error(`"notify.smtp.${k}" must be a positive number`);
 			}
 			out[k] = s[k] as number;
@@ -515,9 +485,7 @@ function validateNotifySmtp(raw: unknown): NotifySmtpConfig {
 	const hasUser = s.user !== undefined;
 	const hasPass = s.pass !== undefined;
 	if (hasUser !== hasPass) {
-		throw new Error(
-			`"notify.smtp.user" and "notify.smtp.pass" must be set together`,
-		);
+		throw new Error(`"notify.smtp.user" and "notify.smtp.pass" must be set together`);
 	}
 	if (hasUser) {
 		assertNonEmptyString(s.user, "notify.smtp.user");
@@ -605,10 +573,7 @@ function validateNotify(raw: unknown): NotifyConfig | undefined {
  * prefer passing an explicit `baseDir` (or absolute paths) to avoid cwd-
  * dependent behaviour.
  */
-export function validateConfig(
-	raw: unknown,
-	baseDir?: string,
-): FileRelayConfig {
+export function validateConfig(raw: unknown, baseDir?: string): FileRelayConfig {
 	if (!raw || typeof raw !== "object") {
 		throw new Error(`Config must be a JSON object`);
 	}

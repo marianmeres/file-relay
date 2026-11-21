@@ -16,7 +16,8 @@ import process from "node:process";
 import { createInterface } from "node:readline";
 
 function printUsage() {
-	console.log(`
+	console.log(
+		`
 file-relay install
 
 Scaffold a new file-relay directory with config, env template, and task runner.
@@ -27,7 +28,8 @@ Usage:
 After install:
   1. Edit .env with your credentials
   2. Setup cron: deno task backup
-`.trim());
+`.trim(),
+	);
 }
 
 /** Reads answers from stdin, one line per question. */
@@ -51,7 +53,8 @@ function createLineReader(): LineReader {
 		async ask(question) {
 			process.stdout.write(`${question} `);
 			const next = await lines.next();
-			if (next.done) throw new Error("stdin closed before every question was answered");
+			if (next.done)
+				throw new Error("stdin closed before every question was answered");
 			return next.value;
 		},
 		close() {
@@ -130,10 +133,12 @@ export async function runInstall(args: string[]): Promise<number> {
 async function scaffold(rl: LineReader, dirname: string, targetDir: string) {
 	// Interactive prompts
 	const sourceDir = await askRequired(rl, "Source directory to relay files from:");
-	const adapter = await askChoice(rl, "Destination adapter:", [
+	const adapter = await askChoice(
+		rl,
+		"Destination adapter:",
+		["static-upload-server", "filesystem"],
 		"static-upload-server",
-		"filesystem",
-	], "static-upload-server");
+	);
 
 	let destinationConfig: Record<string, string>;
 	let envExample: string;
@@ -155,12 +160,13 @@ async function scaffold(rl: LineReader, dirname: string, targetDir: string) {
 	}
 
 	// Optional email notification (e.g. a "the cron ran" heartbeat + failure alerts).
-	const wantNotify = await askChoice(
-		rl,
-		"Enable email notifications after each run?",
-		["yes", "no"],
-		"no",
-	) === "yes";
+	const wantNotify =
+		(await askChoice(
+			rl,
+			"Enable email notifications after each run?",
+			["yes", "no"],
+			"no",
+		)) === "yes";
 
 	let notifyConfig: Record<string, unknown> | undefined;
 	if (wantNotify) {
@@ -175,7 +181,8 @@ async function scaffold(rl: LineReader, dirname: string, targetDir: string) {
 				pass: "${SMTP_PASS}",
 			},
 		};
-		envExample += "\n# Email notifications\n" +
+		envExample +=
+			"\n# Email notifications\n" +
 			"NOTIFY_TO=ops@example.com\n" +
 			"NOTIFY_FROM=file-relay@example.com\n" +
 			"SMTP_HOST=smtp.example.com\n" +
@@ -198,8 +205,7 @@ async function scaffold(rl: LineReader, dirname: string, targetDir: string) {
 	const denoJson = JSON.stringify(
 		{
 			tasks: {
-				backup:
-					"deno run -A --env-file=.env jsr:@marianmeres/file-relay config.json",
+				backup: "deno run -A --env-file=.env jsr:@marianmeres/file-relay config.json",
 			},
 		},
 		null,

@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { FileInfo } from "../file-finder.ts";
 import type { FilesystemCopyDestination } from "../config.ts";
+import type { FileInfo } from "../file-finder.ts";
 import type {
 	CheckResult,
 	RelayAdapter,
@@ -26,9 +26,7 @@ async function sha256OfFile(path: string): Promise<string> {
  * Create a {@linkcode RelayAdapter} that copies files to a local/mounted filesystem directory.
  * Preserves source subdirectory structure at the destination.
  */
-export function createFilesystemAdapter(
-	config: FilesystemCopyDestination,
-): RelayAdapter {
+export function createFilesystemAdapter(config: FilesystemCopyDestination): RelayAdapter {
 	const verify = config.verify ?? "size";
 
 	return {
@@ -72,7 +70,8 @@ export function createFilesystemAdapter(
 						success: false,
 						sourceFile: file,
 						destination: destPath,
-						error: `Size mismatch: source=${file.size}` +
+						error:
+							`Size mismatch: source=${file.size}` +
 							` dest=${destStat.size}`,
 						durationMs: performance.now() - start,
 					};
@@ -89,7 +88,8 @@ export function createFilesystemAdapter(
 							success: false,
 							sourceFile: file,
 							destination: destPath,
-							error: `SHA-256 mismatch: source=${srcHash}` +
+							error:
+								`SHA-256 mismatch: source=${srcHash}` +
 								` dest=${destHash}`,
 							durationMs: performance.now() - start,
 						};
@@ -121,10 +121,11 @@ export function createFilesystemAdapter(
 						``,
 						`Thrown error:`,
 						err instanceof Error
-							? `  ${err.name}: ${err.message}\n${
-								(err.stack ?? "").split("\n").slice(1)
-									.map((l) => `  ${l.trim()}`).join("\n")
-							}`
+							? `  ${err.name}: ${err.message}\n${(err.stack ?? "")
+									.split("\n")
+									.slice(1)
+									.map((l) => `  ${l.trim()}`)
+									.join("\n")}`
 							: `  ${String(err)}`,
 					].join("\n"),
 					durationMs: elapsed,

@@ -71,7 +71,7 @@ export async function findFiles(source: SourceConfig): Promise<FileInfo[]> {
 
 	const includeRe = globToRegExp(glob, { extended: true, globstar: true });
 	const excludeRes = exclude.map((p) =>
-		globToRegExp(p, { extended: true, globstar: true })
+		globToRegExp(p, { extended: true, globstar: true }),
 	);
 
 	// Regex-based filters (partial match via RegExp.test)
@@ -117,9 +117,7 @@ export async function findFiles(source: SourceConfig): Promise<FileInfo[]> {
 	}
 
 	// sort by mtime descending
-	files.sort(
-		(a, b) => b.mtime.getTime() - a.mtime.getTime(),
-	);
+	files.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
 
 	return files;
 }

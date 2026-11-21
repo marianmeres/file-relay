@@ -51,10 +51,7 @@ function isFailure(ctx: NotifyContext): boolean {
  * @param ctx - The run outcome.
  * @returns `true` if an email should be sent.
  */
-export function shouldNotify(
-	trigger: NotifyConfig["on"],
-	ctx: NotifyContext,
-): boolean {
+export function shouldNotify(trigger: NotifyConfig["on"], ctx: NotifyContext): boolean {
 	if (trigger === "failure") return isFailure(ctx);
 	return true; // "always" (and the default)
 }
@@ -114,11 +111,7 @@ export function buildNotificationMessage(
 
 	const subject = `${prefix} ${label} on ${host} — ${summary}`.trim();
 
-	const headerLines = [
-		`Status:  ${label}`,
-		`Host:    ${host}`,
-		`Summary: ${summary}`,
-	];
+	const headerLines = [`Status:  ${label}`, `Host:    ${host}`, `Summary: ${summary}`];
 	if (ctx.result) {
 		headerLines.push(
 			`Started: ${ctx.result.startedAt}`,
@@ -126,10 +119,15 @@ export function buildNotificationMessage(
 		);
 	}
 
-	const body = ctx.logText.trim().length > 0
-		? headerLines.join("\n") + "\n\n" + "-".repeat(60) + "\n" +
-			ctx.logText.trimEnd() + "\n"
-		: headerLines.join("\n") + "\n";
+	const body =
+		ctx.logText.trim().length > 0
+			? headerLines.join("\n") +
+				"\n\n" +
+				"-".repeat(60) +
+				"\n" +
+				ctx.logText.trimEnd() +
+				"\n"
+			: headerLines.join("\n") + "\n";
 
 	const message: SendOptions = {
 		to: config.to,
@@ -141,11 +139,13 @@ export function buildNotificationMessage(
 	if (config.cc) message.cc = config.cc;
 	if (config.bcc) message.bcc = config.bcc;
 	if (config.attachLog && ctx.logText.trim().length > 0) {
-		message.attachments = [{
-			filename: "file-relay.log",
-			content: ctx.logText,
-			contentType: "text/plain",
-		}];
+		message.attachments = [
+			{
+				filename: "file-relay.log",
+				content: ctx.logText,
+				contentType: "text/plain",
+			},
+		];
 	}
 
 	return message;

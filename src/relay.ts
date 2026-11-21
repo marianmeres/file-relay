@@ -3,14 +3,14 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { type Clog, createClog } from "@marianmeres/clog";
-import type { FileRelayConfig, RetryConfig } from "./config.ts";
-import { type FileInfo, findFiles } from "./file-finder.ts";
-import { createTracker } from "./tracker.ts";
 import {
 	createAdapter,
 	type RelayAdapter,
 	type TransferResult,
 } from "./adapters/adapter.ts";
+import type { FileRelayConfig, RetryConfig } from "./config.ts";
+import { type FileInfo, findFiles } from "./file-finder.ts";
+import { createTracker } from "./tracker.ts";
 
 /**
  * A clog-like callable logger. Accepts the full {@linkcode Clog} instance
@@ -161,10 +161,7 @@ async function transferWithRetry(
 
 		if (signal?.aborted) return last;
 		if (i < attempts) {
-			const delay = Math.min(
-				maxBackoff,
-				baseBackoff * Math.pow(2, i - 1),
-			);
+			const delay = Math.min(maxBackoff, baseBackoff * 2 ** (i - 1));
 			log.warn(
 				`  attempt ${i}/${attempts} failed: ${res.error} — ` +
 					`retrying in ${delay}ms`,
@@ -196,14 +193,16 @@ async function runPool<T, R>(
 	const lanes = Math.min(concurrency, n);
 
 	for (let lane = 0; lane < lanes; lane++) {
-		pool.push((async () => {
-			while (true) {
-				if (signal?.aborted) return;
-				const i = next++;
-				if (i >= n) return;
-				results[i] = await worker(items[i], i);
-			}
-		})());
+		pool.push(
+			(async () => {
+				while (true) {
+					if (signal?.aborted) return;
+					const i = next++;
+					if (i >= n) return;
+					results[i] = await worker(items[i], i);
+				}
+			})(),
+		);
 	}
 	await Promise.all(pool);
 	return results;
@@ -377,53 +376,38 @@ export async function relay(
 	// lanes — the pool workers interleave, they don't run in parallel threads.
 	let failureSeq = 0;
 
-	const transfers = await runPool(
-		toTransfer,
-		concurrency,
-		signal,
-		async (file) => {
+	const transfers = await runPool(toTransfer, concurrency, signal, async (file) => {
+		log(`Transferring: ${file.relativePath}` + ` (${formatBytes(file.size)})`);
+		const result = await transferWithRetry(adapter, file, retry, signal, log);
+		if (result.success) {
 			log(
-				`Transferring: ${file.relativePath}` +
-					` (${formatBytes(file.size)})`,
+				`  OK -> ${result.destination}` + ` (${result.durationMs?.toFixed(0)}ms)`,
 			);
-			const result = await transferWithRetry(
-				adapter,
-				file,
-				retry,
-				signal,
-				log,
+			await tracker.markTransferred(file.relativePath, {
+				transferredAt: new Date().toISOString(),
+				sourcePath: file.path,
+				sourceSize: result.bytesTransferred ?? file.size,
+				destinationInfo: result.destination,
+			});
+		} else {
+			log.error(
+				`  FAILED after ${result.attempts ?? 1} attempt(s)` +
+					` in ${((result.durationMs ?? 0) / 1000).toFixed(1)}s:` +
+					` ${result.error}`,
 			);
-			if (result.success) {
-				log(
-					`  OK -> ${result.destination}` +
-						` (${result.durationMs?.toFixed(0)}ms)`,
-				);
-				await tracker.markTransferred(file.relativePath, {
-					transferredAt: new Date().toISOString(),
-					sourcePath: file.path,
-					sourceSize: result.bytesTransferred ?? file.size,
-					destinationInfo: result.destination,
-				});
-			} else {
-				log.error(
-					`  FAILED after ${result.attempts ?? 1} attempt(s)` +
-						` in ${((result.durationMs ?? 0) / 1000).toFixed(1)}s:` +
-						` ${result.error}`,
-				);
-				const dump = await _writeErrorDump(
-					config.logDir,
-					runTs,
-					++failureSeq,
-					adapter.name,
-					result,
-				);
-				if (dump) {
-					log.error(`  Full error detail: ${dump}`);
-				}
+			const dump = await _writeErrorDump(
+				config.logDir,
+				runTs,
+				++failureSeq,
+				adapter.name,
+				result,
+			);
+			if (dump) {
+				log.error(`  Full error detail: ${dump}`);
 			}
-			return result;
-		},
-	);
+		}
+		return result;
+	});
 
 	// If the run was aborted, `runPool` may have left trailing slots unfilled.
 	// Drop those to avoid surfacing `undefined` to callers.
@@ -468,10 +452,12 @@ export async function relay(
 
 /** Make a relative path safe to embed in a filename. */
 function _slugify(relativePath: string): string {
-	return relativePath
-		.replace(/[^a-zA-Z0-9._-]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 80) || "file";
+	return (
+		relativePath
+			.replace(/[^a-zA-Z0-9._-]+/g, "-")
+			.replace(/^-+|-+$/g, "")
+			.slice(0, 80) || "file"
+	);
 }
 
 /**
@@ -554,7 +540,7 @@ async function _initLogFileWriter(logDir: string, runTs: string) {
 			const timestamp = data.timestamp ?? new Date().toISOString();
 			const ns = data.namespace ? `[${data.namespace}] ` : "";
 			const msg = (data.args ?? [])
-				.map((a: unknown) => typeof a === "string" ? a : JSON.stringify(a))
+				.map((a: unknown) => (typeof a === "string" ? a : JSON.stringify(a)))
 				.join(" ");
 			const line = `[${timestamp}] [${level}] ${ns}${msg}\n`;
 			try {

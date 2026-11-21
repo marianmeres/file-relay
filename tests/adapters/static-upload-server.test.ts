@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { test } from "node:test";
 import { createStaticUploadServerAdapter } from "../../src/adapters/static-upload-server.ts";
+import type { FileInfo } from "../../src/file-finder.ts";
 import {
 	cleanup,
 	createFile,
@@ -8,14 +10,8 @@ import {
 	createTempDir,
 	serve,
 } from "../_helpers.ts";
-import { join } from "node:path";
-import type { FileInfo } from "../../src/file-finder.ts";
 
-function makeFileInfo(
-	dir: string,
-	relativePath: string,
-	size: number,
-): FileInfo {
+function makeFileInfo(dir: string, relativePath: string, size: number): FileInfo {
 	return {
 		path: join(dir, relativePath),
 		relativePath,
@@ -204,7 +200,11 @@ test("static-upload-server adapter - check() reports unreachable host", async ()
 });
 
 /** Start a server that answers every upload with a fixed error response. */
-function createFailingServer(body: string, status = 500, headers?: ResponseInit["headers"]) {
+function createFailingServer(
+	body: string,
+	status = 500,
+	headers?: ResponseInit["headers"],
+) {
 	const controller = new AbortController();
 	let port = 0;
 	const server = serve(
@@ -234,7 +234,8 @@ function createFailingServer(body: string, status = 500, headers?: ResponseInit[
 
 test("static-upload-server adapter - captures full error body in errorDetail", async () => {
 	const srcDir = await createTempDir();
-	const html = `<html><head><title>500 Internal Server Error</title></head>` +
+	const html =
+		`<html><head><title>500 Internal Server Error</title></head>` +
 		`<body>${"x".repeat(2000)}</body></html>`;
 	const mock = createFailingServer(html, 500, { "x-request-id": "abc123" });
 	await new Promise((r) => setTimeout(r, 100));
@@ -286,9 +287,7 @@ test("static-upload-server adapter - short error body is kept inline verbatim", 
 			url: mock.url,
 			token: "t",
 		});
-		const result = await adapter.transfer(
-			makeFileInfo(srcDir, "backup.sql.gz", 4),
-		);
+		const result = await adapter.transfer(makeFileInfo(srcDir, "backup.sql.gz", 4));
 		assert.deepStrictEqual(result.success, false);
 		assert.deepStrictEqual(result.error, "HTTP 500: Internal Server Error");
 		assert.deepStrictEqual(result.errorDetail!.includes("Mode: put"), true);
@@ -335,14 +334,15 @@ test("static-upload-server adapter - names a timeout as a timeout", async () => 
 			token: "t",
 			timeout: 300,
 		});
-		const result = await adapter.transfer(
-			makeFileInfo(srcDir, "backup.sql.gz", 4),
-		);
+		const result = await adapter.transfer(makeFileInfo(srcDir, "backup.sql.gz", 4));
 
 		assert.deepStrictEqual(result.success, false);
 		assert.deepStrictEqual(result.error!.includes("Timed out after 300ms"), true);
 		assert.deepStrictEqual(result.errorDetail!.includes("Timed out: yes"), true);
-		assert.deepStrictEqual(result.errorDetail!.includes("Externally aborted: no"), true);
+		assert.deepStrictEqual(
+			result.errorDetail!.includes("Externally aborted: no"),
+			true,
+		);
 	} finally {
 		controller.abort();
 		await server.finished.catch(() => {});
@@ -455,15 +455,22 @@ test("static-upload-server adapter - fails the transfer when stored size != sent
 			url: mock.url,
 			token,
 		});
-		const result = await adapter.transfer(
-			makeFileInfo(srcDir, "backup.sql.gz", 4),
-		);
+		const result = await adapter.transfer(makeFileInfo(srcDir, "backup.sql.gz", 4));
 
 		// a 200 is NOT enough — a truncated upload must not be marked transferred
 		assert.deepStrictEqual(result.success, false);
-		assert.deepStrictEqual(result.error, "Size mismatch: sent 4 bytes, server stored 9");
-		assert.deepStrictEqual(result.errorDetail!.includes("Server stored:  9 bytes"), true);
-		assert.deepStrictEqual(result.errorDetail!.includes("Source file is: 4 bytes"), true);
+		assert.deepStrictEqual(
+			result.error,
+			"Size mismatch: sent 4 bytes, server stored 9",
+		);
+		assert.deepStrictEqual(
+			result.errorDetail!.includes("Server stored:  9 bytes"),
+			true,
+		);
+		assert.deepStrictEqual(
+			result.errorDetail!.includes("Source file is: 4 bytes"),
+			true,
+		);
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
@@ -483,9 +490,7 @@ test("static-upload-server adapter - explains a 404 from a pre-1.7.0 server", as
 			url: mock.url,
 			token,
 		});
-		const result = await adapter.transfer(
-			makeFileInfo(srcDir, "backup.sql.gz", 4),
-		);
+		const result = await adapter.transfer(makeFileInfo(srcDir, "backup.sql.gz", 4));
 
 		assert.deepStrictEqual(result.success, false);
 		// a bare "HTTP 404: Not found" would read as a typo'd URL
