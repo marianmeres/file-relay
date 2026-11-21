@@ -1,9 +1,12 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import process from "node:process";
+import { test } from "node:test";
 import { loadConfig, validateConfig } from "../src/config.ts";
 import { cleanup, createTempDir } from "./_helpers.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 
-Deno.test("config - validates a correct static-upload-server config", () => {
+test("config - validates a correct static-upload-server config", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
@@ -19,16 +22,16 @@ Deno.test("config - validates a correct static-upload-server config", () => {
 		},
 	});
 
-	assertEquals(config.logDir, "/tmp/logs");
-	assertEquals(config.trackDir, "/tmp/track");
-	assertEquals(config.source.dir, "/data/backups");
-	assertEquals(config.source.glob, "**/*.sql.gz");
-	assertEquals(config.source.exclude, ["*-latest.sql.gz"]);
-	assertEquals(config.source.followSymlinks, false);
-	assertEquals(config.destination.adapter, "static-upload-server");
+	assert.deepStrictEqual(config.logDir, "/tmp/logs");
+	assert.deepStrictEqual(config.trackDir, "/tmp/track");
+	assert.deepStrictEqual(config.source.dir, "/data/backups");
+	assert.deepStrictEqual(config.source.glob, "**/*.sql.gz");
+	assert.deepStrictEqual(config.source.exclude, ["*-latest.sql.gz"]);
+	assert.deepStrictEqual(config.source.followSymlinks, false);
+	assert.deepStrictEqual(config.destination.adapter, "static-upload-server");
 });
 
-Deno.test("config - validates a correct filesystem config", () => {
+test("config - validates a correct filesystem config", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
@@ -36,38 +39,36 @@ Deno.test("config - validates a correct filesystem config", () => {
 		destination: { adapter: "filesystem", dir: "/mnt/offsite" },
 	});
 
-	assertEquals(config.source.glob, "**/*"); // default
-	assertEquals(config.source.exclude, []); // default
-	assertEquals(config.destination.adapter, "filesystem");
+	assert.deepStrictEqual(config.source.glob, "**/*"); // default
+	assert.deepStrictEqual(config.source.exclude, []); // default
+	assert.deepStrictEqual(config.destination.adapter, "filesystem");
 });
 
-Deno.test("config - rejects missing logDir", () => {
-	assertThrows(
+test("config - rejects missing logDir", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				trackDir: "/tmp/track",
 				source: { dir: "/data" },
 				destination: { adapter: "filesystem", dir: "/mnt" },
 			}),
-		Error,
-		'"logDir"',
+		(e: unknown) => e instanceof Error && e.message.includes('"logDir"'),
 	);
 });
 
-Deno.test("config - rejects missing trackDir", () => {
-	assertThrows(
+test("config - rejects missing trackDir", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
 				source: { dir: "/data" },
 				destination: { adapter: "filesystem", dir: "/mnt" },
 			}),
-		Error,
-		'"trackDir"',
+		(e: unknown) => e instanceof Error && e.message.includes('"trackDir"'),
 	);
 });
 
-Deno.test("config - resolves relative paths against baseDir", () => {
+test("config - resolves relative paths against baseDir", () => {
 	const config = validateConfig(
 		{
 			logDir: "./log",
@@ -78,16 +79,16 @@ Deno.test("config - resolves relative paths against baseDir", () => {
 		"/base/dir",
 	);
 
-	assertEquals(config.logDir, "/base/dir/log");
-	assertEquals(config.trackDir, "/base/dir/track");
-	assertEquals(config.source.dir, "/base/dir/source");
-	assertEquals(
+	assert.deepStrictEqual(config.logDir, "/base/dir/log");
+	assert.deepStrictEqual(config.trackDir, "/base/dir/track");
+	assert.deepStrictEqual(config.source.dir, "/base/dir/source");
+	assert.deepStrictEqual(
 		(config.destination as { dir: string }).dir,
 		"/base/dir/dest",
 	);
 });
 
-Deno.test("config - resolves relative paths against cwd when no baseDir", () => {
+test("config - resolves relative paths against cwd when no baseDir", () => {
 	const config = validateConfig({
 		logDir: "./log",
 		trackDir: "./track",
@@ -96,13 +97,13 @@ Deno.test("config - resolves relative paths against cwd when no baseDir", () => 
 	});
 
 	// should resolve against cwd
-	const cwd = Deno.cwd();
-	assertEquals(config.logDir, `${cwd}/log`);
-	assertEquals(config.source.dir, `${cwd}/source`);
+	const cwd = process.cwd();
+	assert.deepStrictEqual(config.logDir, `${cwd}/log`);
+	assert.deepStrictEqual(config.source.dir, `${cwd}/source`);
 });
 
-Deno.test("config - rejects unknown adapter", () => {
-	assertThrows(
+test("config - rejects unknown adapter", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -110,13 +111,12 @@ Deno.test("config - rejects unknown adapter", () => {
 				source: { dir: "/data" },
 				destination: { adapter: "ftp", url: "ftp://host" },
 			}),
-		Error,
-		"Unknown adapter",
+		(e: unknown) => e instanceof Error && e.message.includes("Unknown adapter"),
 	);
 });
 
-Deno.test("config - rejects missing url for static-upload-server", () => {
-	assertThrows(
+test("config - rejects missing url for static-upload-server", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -127,13 +127,12 @@ Deno.test("config - rejects missing url for static-upload-server", () => {
 					token: "t",
 				},
 			}),
-		Error,
-		'"destination.url"',
+		(e: unknown) => e instanceof Error && e.message.includes('"destination.url"'),
 	);
 });
 
-Deno.test("config - rejects missing token for static-upload-server", () => {
-	assertThrows(
+test("config - rejects missing token for static-upload-server", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -144,12 +143,11 @@ Deno.test("config - rejects missing token for static-upload-server", () => {
 					url: "https://host",
 				},
 			}),
-		Error,
-		'"destination.token"',
+		(e: unknown) => e instanceof Error && e.message.includes('"destination.token"'),
 	);
 });
 
-Deno.test("config - applies default timeout", () => {
+test("config - applies default timeout", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
@@ -161,16 +159,16 @@ Deno.test("config - applies default timeout", () => {
 		},
 	});
 
-	assertEquals(
+	assert.deepStrictEqual(
 		(config.destination as { timeout: number }).timeout,
 		300_000,
 	);
 });
 
-Deno.test("config - loadConfig with env var interpolation", async () => {
+test("config - loadConfig with env var interpolation", async () => {
 	const tmpDir = await createTempDir();
 	try {
-		Deno.env.set("TEST_RELAY_TOKEN", "my-secret-token");
+		process.env["TEST_RELAY_TOKEN"] = "my-secret-token";
 
 		const configContent = JSON.stringify({
 			logDir: "/tmp/logs",
@@ -184,26 +182,26 @@ Deno.test("config - loadConfig with env var interpolation", async () => {
 		});
 
 		const configPath = join(tmpDir, "config.json");
-		await Deno.writeTextFile(configPath, configContent);
+		await fs.writeFile(configPath, configContent);
 
 		const config = await loadConfig(configPath);
-		assertEquals(
+		assert.deepStrictEqual(
 			(config.destination as { token: string }).token,
 			"my-secret-token",
 		);
 	} finally {
-		Deno.env.delete("TEST_RELAY_TOKEN");
+		delete process.env["TEST_RELAY_TOKEN"];
 		await cleanup(tmpDir);
 	}
 });
 
-Deno.test("config - loadConfig rejects missing env var", async () => {
+test("config - loadConfig rejects missing env var", async () => {
 	const tmpDir = await createTempDir();
 	try {
-		Deno.env.delete("NONEXISTENT_VAR_12345");
+		delete process.env["NONEXISTENT_VAR_12345"];
 
 		const configPath = join(tmpDir, "config.json");
-		await Deno.writeTextFile(
+		await fs.writeFile(
 			configPath,
 			JSON.stringify({
 				logDir: "/tmp/logs",
@@ -217,17 +215,16 @@ Deno.test("config - loadConfig rejects missing env var", async () => {
 			}),
 		);
 
-		await assertRejects(
+		await assert.rejects(
 			() => loadConfig(configPath),
-			Error,
-			"NONEXISTENT_VAR_12345",
+			(e: unknown) => e instanceof Error && e.message.includes("NONEXISTENT_VAR_12345"),
 		);
 	} finally {
 		await cleanup(tmpDir);
 	}
 });
 
-Deno.test("config - validates match and ignore arrays", () => {
+test("config - validates match and ignore arrays", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
@@ -239,11 +236,11 @@ Deno.test("config - validates match and ignore arrays", () => {
 		destination: { adapter: "filesystem", dir: "/mnt" },
 	});
 
-	assertEquals(config.source.match, ["^daily/", "weekly"]);
-	assertEquals(config.source.ignore, ["\\.tmp$"]);
+	assert.deepStrictEqual(config.source.match, ["^daily/", "weekly"]);
+	assert.deepStrictEqual(config.source.ignore, ["\\.tmp$"]);
 });
 
-Deno.test("config - defaults match and ignore to empty arrays", () => {
+test("config - defaults match and ignore to empty arrays", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
@@ -251,12 +248,12 @@ Deno.test("config - defaults match and ignore to empty arrays", () => {
 		destination: { adapter: "filesystem", dir: "/mnt" },
 	});
 
-	assertEquals(config.source.match, []);
-	assertEquals(config.source.ignore, []);
+	assert.deepStrictEqual(config.source.match, []);
+	assert.deepStrictEqual(config.source.ignore, []);
 });
 
-Deno.test("config - rejects non-array match", () => {
-	assertThrows(
+test("config - rejects non-array match", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -264,13 +261,12 @@ Deno.test("config - rejects non-array match", () => {
 				source: { dir: "/data", match: "not-array" },
 				destination: { adapter: "filesystem", dir: "/mnt" },
 			}),
-		Error,
-		'"source.match" must be an array',
+		(e: unknown) => e instanceof Error && e.message.includes('"source.match" must be an array'),
 	);
 });
 
-Deno.test("config - rejects non-string entries in ignore", () => {
-	assertThrows(
+test("config - rejects non-string entries in ignore", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -278,13 +274,12 @@ Deno.test("config - rejects non-string entries in ignore", () => {
 				source: { dir: "/data", ignore: [123] },
 				destination: { adapter: "filesystem", dir: "/mnt" },
 			}),
-		Error,
-		'"source.ignore" entries must be strings',
+		(e: unknown) => e instanceof Error && e.message.includes('"source.ignore" entries must be strings'),
 	);
 });
 
-Deno.test("config - rejects invalid regex in match", () => {
-	assertThrows(
+test("config - rejects invalid regex in match", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -292,13 +287,12 @@ Deno.test("config - rejects invalid regex in match", () => {
 				source: { dir: "/data", match: ["[invalid"] },
 				destination: { adapter: "filesystem", dir: "/mnt" },
 			}),
-		Error,
-		"invalid regex",
+		(e: unknown) => e instanceof Error && e.message.includes("invalid regex"),
 	);
 });
 
-Deno.test("config - rejects invalid regex in ignore", () => {
-	assertThrows(
+test("config - rejects invalid regex in ignore", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -306,12 +300,11 @@ Deno.test("config - rejects invalid regex in ignore", () => {
 				source: { dir: "/data", ignore: ["(unclosed"] },
 				destination: { adapter: "filesystem", dir: "/mnt" },
 			}),
-		Error,
-		"invalid regex",
+		(e: unknown) => e instanceof Error && e.message.includes("invalid regex"),
 	);
 });
 
-Deno.test("config - trailing slash on absolute path does not re-join baseDir", () => {
+test("config - trailing slash on absolute path does not re-join baseDir", () => {
 	const config = validateConfig(
 		{
 			logDir: "/tmp/logs/",
@@ -322,16 +315,16 @@ Deno.test("config - trailing slash on absolute path does not re-join baseDir", (
 		"/base/dir",
 	);
 
-	assertEquals(config.logDir, "/tmp/logs");
-	assertEquals(config.trackDir, "/tmp/track");
-	assertEquals(config.source.dir, "/data/backups");
-	assertEquals(
+	assert.deepStrictEqual(config.logDir, "/tmp/logs");
+	assert.deepStrictEqual(config.trackDir, "/tmp/track");
+	assert.deepStrictEqual(config.source.dir, "/data/backups");
+	assert.deepStrictEqual(
 		(config.destination as { dir: string }).dir,
 		"/mnt/dest",
 	);
 });
 
-Deno.test("config - validates transfer.concurrency and retry", () => {
+test("config - validates transfer.concurrency and retry", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
@@ -343,14 +336,14 @@ Deno.test("config - validates transfer.concurrency and retry", () => {
 		},
 	});
 
-	assertEquals(config.transfer?.concurrency, 4);
-	assertEquals(config.transfer?.retry?.attempts, 3);
-	assertEquals(config.transfer?.retry?.backoffMs, 500);
-	assertEquals(config.transfer?.retry?.maxBackoffMs, 10_000);
+	assert.deepStrictEqual(config.transfer?.concurrency, 4);
+	assert.deepStrictEqual(config.transfer?.retry?.attempts, 3);
+	assert.deepStrictEqual(config.transfer?.retry?.backoffMs, 500);
+	assert.deepStrictEqual(config.transfer?.retry?.maxBackoffMs, 10_000);
 });
 
-Deno.test("config - rejects non-positive concurrency", () => {
-	assertThrows(
+test("config - rejects non-positive concurrency", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -359,13 +352,12 @@ Deno.test("config - rejects non-positive concurrency", () => {
 				destination: { adapter: "filesystem", dir: "/mnt" },
 				transfer: { concurrency: 0 },
 			}),
-		Error,
-		"concurrency",
+		(e: unknown) => e instanceof Error && e.message.includes("concurrency"),
 	);
 });
 
-Deno.test("config - rejects invalid retry attempts", () => {
-	assertThrows(
+test("config - rejects invalid retry attempts", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -374,12 +366,11 @@ Deno.test("config - rejects invalid retry attempts", () => {
 				destination: { adapter: "filesystem", dir: "/mnt" },
 				transfer: { retry: { attempts: 0 } },
 			}),
-		Error,
-		"attempts",
+		(e: unknown) => e instanceof Error && e.message.includes("attempts"),
 	);
 });
 
-Deno.test("config - validates filesystem verify mode", () => {
+test("config - validates filesystem verify mode", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
@@ -390,14 +381,14 @@ Deno.test("config - validates filesystem verify mode", () => {
 			verify: "sha256",
 		},
 	});
-	assertEquals(
+	assert.deepStrictEqual(
 		(config.destination as { verify: string }).verify,
 		"sha256",
 	);
 });
 
-Deno.test("config - rejects unknown verify mode", () => {
-	assertThrows(
+test("config - rejects unknown verify mode", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -409,12 +400,11 @@ Deno.test("config - rejects unknown verify mode", () => {
 					verify: "md5",
 				},
 			}),
-		Error,
-		"verify",
+		(e: unknown) => e instanceof Error && e.message.includes("verify"),
 	);
 });
 
-Deno.test("config - validates a full notify block and applies defaults", () => {
+test("config - validates a full notify block and applies defaults", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
@@ -427,18 +417,18 @@ Deno.test("config - validates a full notify block and applies defaults", () => {
 		},
 	});
 
-	assertEquals(config.notify?.to, "ops@example.com");
-	assertEquals(config.notify?.from, "relay@host");
-	assertEquals(config.notify?.on, "always"); // default
-	assertEquals(config.notify?.subjectPrefix, "[file-relay]"); // default
-	assertEquals(config.notify?.attachLog, false); // default
-	assertEquals(config.notify?.smtp.host, "smtp.example.com");
-	assertEquals(config.notify?.smtp.port, 587); // default
-	assertEquals(config.notify?.smtp.user, "u");
-	assertEquals(config.notify?.smtp.pass, "p");
+	assert.deepStrictEqual(config.notify?.to, "ops@example.com");
+	assert.deepStrictEqual(config.notify?.from, "relay@host");
+	assert.deepStrictEqual(config.notify?.on, "always"); // default
+	assert.deepStrictEqual(config.notify?.subjectPrefix, "[file-relay]"); // default
+	assert.deepStrictEqual(config.notify?.attachLog, false); // default
+	assert.deepStrictEqual(config.notify?.smtp.host, "smtp.example.com");
+	assert.deepStrictEqual(config.notify?.smtp.port, 587); // default
+	assert.deepStrictEqual(config.notify?.smtp.user, "u");
+	assert.deepStrictEqual(config.notify?.smtp.pass, "p");
 });
 
-Deno.test("config - notify accepts arrays for to/cc/bcc and on=failure", () => {
+test("config - notify accepts arrays for to/cc/bcc and on=failure", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
@@ -462,19 +452,19 @@ Deno.test("config - notify accepts arrays for to/cc/bcc and on=failure", () => {
 		},
 	});
 
-	assertEquals(config.notify?.to, ["a@host", "b@host"]);
-	assertEquals(config.notify?.on, "failure");
-	assertEquals(config.notify?.cc, "cc@host");
-	assertEquals(config.notify?.bcc, ["x@host"]);
-	assertEquals(config.notify?.subjectPrefix, "[backup]");
-	assertEquals(config.notify?.attachLog, true);
-	assertEquals(config.notify?.smtp.port, 465);
-	assertEquals(config.notify?.smtp.secure, true);
-	assertEquals(config.notify?.smtp.connectionTimeout, 15000);
-	assertEquals(config.notify?.smtp.socketTimeout, 20000);
+	assert.deepStrictEqual(config.notify?.to, ["a@host", "b@host"]);
+	assert.deepStrictEqual(config.notify?.on, "failure");
+	assert.deepStrictEqual(config.notify?.cc, "cc@host");
+	assert.deepStrictEqual(config.notify?.bcc, ["x@host"]);
+	assert.deepStrictEqual(config.notify?.subjectPrefix, "[backup]");
+	assert.deepStrictEqual(config.notify?.attachLog, true);
+	assert.deepStrictEqual(config.notify?.smtp.port, 465);
+	assert.deepStrictEqual(config.notify?.smtp.secure, true);
+	assert.deepStrictEqual(config.notify?.smtp.connectionTimeout, 15000);
+	assert.deepStrictEqual(config.notify?.smtp.socketTimeout, 20000);
 });
 
-Deno.test("config - coerces boolean fields from strings (env interpolation)", () => {
+test("config - coerces boolean fields from strings (env interpolation)", () => {
 	// ${ENV_VAR} interpolation always yields strings, so env-driven booleans
 	// arrive here as text and must be parsed.
 	const config = validateConfig({
@@ -494,14 +484,14 @@ Deno.test("config - coerces boolean fields from strings (env interpolation)", ()
 		},
 	});
 
-	assertEquals(config.source.followSymlinks, true);
-	assertEquals(config.notify?.attachLog, false);
-	assertEquals(config.notify?.smtp.secure, false);
-	assertEquals(config.notify?.smtp.tls?.rejectUnauthorized, false);
+	assert.deepStrictEqual(config.source.followSymlinks, true);
+	assert.deepStrictEqual(config.notify?.attachLog, false);
+	assert.deepStrictEqual(config.notify?.smtp.secure, false);
+	assert.deepStrictEqual(config.notify?.smtp.tls?.rejectUnauthorized, false);
 });
 
-Deno.test("config - rejects unrecognized boolean string (fail-loud)", () => {
-	assertThrows(
+test("config - rejects unrecognized boolean string (fail-loud)", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -514,13 +504,12 @@ Deno.test("config - rejects unrecognized boolean string (fail-loud)", () => {
 					smtp: { host: "smtp.example.com", secure: "treu" },
 				},
 			}),
-		Error,
-		'"notify.smtp.secure" must be a boolean',
+		(e: unknown) => e instanceof Error && e.message.includes('"notify.smtp.secure" must be a boolean'),
 	);
 });
 
-Deno.test("config - rejects non-positive notify.smtp.connectionTimeout", () => {
-	assertThrows(
+test("config - rejects non-positive notify.smtp.connectionTimeout", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -533,23 +522,22 @@ Deno.test("config - rejects non-positive notify.smtp.connectionTimeout", () => {
 					smtp: { host: "smtp", connectionTimeout: 0 },
 				},
 			}),
-		Error,
-		'"notify.smtp.connectionTimeout"',
+		(e: unknown) => e instanceof Error && e.message.includes('"notify.smtp.connectionTimeout"'),
 	);
 });
 
-Deno.test("config - notify is omitted when not provided", () => {
+test("config - notify is omitted when not provided", () => {
 	const config = validateConfig({
 		logDir: "/tmp/logs",
 		trackDir: "/tmp/track",
 		source: { dir: "/data" },
 		destination: { adapter: "filesystem", dir: "/mnt" },
 	});
-	assertEquals(config.notify, undefined);
+	assert.deepStrictEqual(config.notify, undefined);
 });
 
-Deno.test("config - rejects notify missing to", () => {
-	assertThrows(
+test("config - rejects notify missing to", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -558,13 +546,12 @@ Deno.test("config - rejects notify missing to", () => {
 				destination: { adapter: "filesystem", dir: "/mnt" },
 				notify: { from: "r@host", smtp: { host: "smtp" } },
 			}),
-		Error,
-		'"notify.to"',
+		(e: unknown) => e instanceof Error && e.message.includes('"notify.to"'),
 	);
 });
 
-Deno.test("config - rejects notify missing from", () => {
-	assertThrows(
+test("config - rejects notify missing from", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -573,13 +560,12 @@ Deno.test("config - rejects notify missing from", () => {
 				destination: { adapter: "filesystem", dir: "/mnt" },
 				notify: { to: "ops@host", smtp: { host: "smtp" } },
 			}),
-		Error,
-		'"notify.from"',
+		(e: unknown) => e instanceof Error && e.message.includes('"notify.from"'),
 	);
 });
 
-Deno.test("config - rejects notify missing smtp.host", () => {
-	assertThrows(
+test("config - rejects notify missing smtp.host", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -588,13 +574,12 @@ Deno.test("config - rejects notify missing smtp.host", () => {
 				destination: { adapter: "filesystem", dir: "/mnt" },
 				notify: { to: "ops@host", from: "r@host", smtp: {} },
 			}),
-		Error,
-		'"notify.smtp.host"',
+		(e: unknown) => e instanceof Error && e.message.includes('"notify.smtp.host"'),
 	);
 });
 
-Deno.test("config - rejects notify with lone smtp.user (no pass)", () => {
-	assertThrows(
+test("config - rejects notify with lone smtp.user (no pass)", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -607,13 +592,12 @@ Deno.test("config - rejects notify with lone smtp.user (no pass)", () => {
 					smtp: { host: "smtp", user: "u" },
 				},
 			}),
-		Error,
-		"must be set together",
+		(e: unknown) => e instanceof Error && e.message.includes("must be set together"),
 	);
 });
 
-Deno.test("config - rejects invalid notify.on", () => {
-	assertThrows(
+test("config - rejects invalid notify.on", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -627,13 +611,12 @@ Deno.test("config - rejects invalid notify.on", () => {
 					smtp: { host: "smtp" },
 				},
 			}),
-		Error,
-		'"notify.on"',
+		(e: unknown) => e instanceof Error && e.message.includes('"notify.on"'),
 	);
 });
 
-Deno.test("config - rejects invalid notify.smtp.port", () => {
-	assertThrows(
+test("config - rejects invalid notify.smtp.port", () => {
+	assert.throws(
 		() =>
 			validateConfig({
 				logDir: "/tmp/logs",
@@ -646,17 +629,16 @@ Deno.test("config - rejects invalid notify.smtp.port", () => {
 					smtp: { host: "smtp", port: 70000 },
 				},
 			}),
-		Error,
-		'"notify.smtp.port"',
+		(e: unknown) => e instanceof Error && e.message.includes('"notify.smtp.port"'),
 	);
 });
 
-Deno.test("config - notify smtp credentials support env interpolation", async () => {
+test("config - notify smtp credentials support env interpolation", async () => {
 	const tmpDir = await createTempDir();
 	try {
-		Deno.env.set("TEST_SMTP_PASS", "s3cret");
+		process.env["TEST_SMTP_PASS"] = "s3cret";
 		const configPath = join(tmpDir, "config.json");
-		await Deno.writeTextFile(
+		await fs.writeFile(
 			configPath,
 			JSON.stringify({
 				logDir: "/tmp/logs",
@@ -675,23 +657,22 @@ Deno.test("config - notify smtp credentials support env interpolation", async ()
 			}),
 		);
 		const config = await loadConfig(configPath);
-		assertEquals(config.notify?.smtp.pass, "s3cret");
+		assert.deepStrictEqual(config.notify?.smtp.pass, "s3cret");
 	} finally {
-		Deno.env.delete("TEST_SMTP_PASS");
+		delete process.env["TEST_SMTP_PASS"];
 		await cleanup(tmpDir);
 	}
 });
 
-Deno.test("config - loadConfig rejects invalid JSON", async () => {
+test("config - loadConfig rejects invalid JSON", async () => {
 	const tmpDir = await createTempDir();
 	try {
 		const configPath = join(tmpDir, "bad.json");
-		await Deno.writeTextFile(configPath, "not json");
+		await fs.writeFile(configPath, "not json");
 
-		await assertRejects(
+		await assert.rejects(
 			() => loadConfig(configPath),
-			Error,
-			"JSON",
+			(e: unknown) => e instanceof Error && e.message.includes("JSON"),
 		);
 	} finally {
 		await cleanup(tmpDir);

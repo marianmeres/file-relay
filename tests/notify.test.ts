@@ -1,4 +1,5 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
 	buildNotificationMessage,
 	type NotifyContext,
@@ -46,7 +47,7 @@ const okCtx: NotifyContext = {
 	host: "prod-1",
 };
 
-Deno.test("notify - shouldNotify always returns true for any status", () => {
+test("notify - shouldNotify always returns true for any status", () => {
 	for (
 		const s of [
 			"ok",
@@ -57,10 +58,10 @@ Deno.test("notify - shouldNotify always returns true for any status", () => {
 			"aborted",
 		] as RelayStatus[]
 	) {
-		assert(shouldNotify("always", { result: makeResult(s), logText: "" }));
+		assert.ok(shouldNotify("always", { result: makeResult(s), logText: "" }));
 	}
 	// also for a fatal error
-	assert(
+	assert.ok(
 		shouldNotify("always", {
 			result: null,
 			error: new Error("boom"),
@@ -69,12 +70,12 @@ Deno.test("notify - shouldNotify always returns true for any status", () => {
 	);
 });
 
-Deno.test("notify - shouldNotify failure only fires on abnormal runs", () => {
-	assertEquals(
+test("notify - shouldNotify failure only fires on abnormal runs", () => {
+	assert.deepStrictEqual(
 		shouldNotify("failure", { result: makeResult("ok"), logText: "" }),
 		false,
 	);
-	assertEquals(
+	assert.deepStrictEqual(
 		shouldNotify("failure", { result: makeResult("idle"), logText: "" }),
 		false,
 	);
@@ -86,7 +87,7 @@ Deno.test("notify - shouldNotify failure only fires on abnormal runs", () => {
 			"aborted",
 		] as RelayStatus[]
 	) {
-		assertEquals(
+		assert.deepStrictEqual(
 			shouldNotify("failure", { result: makeResult(s), logText: "" }),
 			true,
 			`expected failure trigger for status "${s}"`,
@@ -94,8 +95,8 @@ Deno.test("notify - shouldNotify failure only fires on abnormal runs", () => {
 	}
 });
 
-Deno.test("notify - shouldNotify failure fires on a fatal error", () => {
-	assert(
+test("notify - shouldNotify failure fires on a fatal error", () => {
+	assert.ok(
 		shouldNotify("failure", {
 			result: null,
 			error: new Error("boom"),
@@ -104,37 +105,37 @@ Deno.test("notify - shouldNotify failure fires on a fatal error", () => {
 	);
 });
 
-Deno.test("notify - shouldNotify failure treats a missing result as failure", () => {
-	assert(shouldNotify("failure", { result: null, logText: "" }));
+test("notify - shouldNotify failure treats a missing result as failure", () => {
+	assert.ok(shouldNotify("failure", { result: null, logText: "" }));
 });
 
-Deno.test("notify - buildNotificationMessage success subject + body", () => {
+test("notify - buildNotificationMessage success subject + body", () => {
 	const msg = buildNotificationMessage(baseConfig, okCtx);
-	assertEquals(msg.to, "ops@example.com");
-	assertEquals(msg.from, "relay@host");
-	assertStringIncludes(msg.subject, "[file-relay]");
-	assertStringIncludes(msg.subject, "OK");
-	assertStringIncludes(msg.subject, "prod-1");
-	assertStringIncludes(msg.subject, "2 transferred");
+	assert.deepStrictEqual(msg.to, "ops@example.com");
+	assert.deepStrictEqual(msg.from, "relay@host");
+	assert.ok(msg.subject.includes("[file-relay]"));
+	assert.ok(msg.subject.includes("OK"));
+	assert.ok(msg.subject.includes("prod-1"));
+	assert.ok(msg.subject.includes("2 transferred"));
 	// body carries the captured output + a summary header
-	assertStringIncludes(msg.text ?? "", "Status:  OK");
-	assertStringIncludes(msg.text ?? "", "Host:    prod-1");
-	assertStringIncludes(msg.text ?? "", "Starting relay run");
+	assert.ok((msg.text ?? "").includes("Status:  OK"));
+	assert.ok((msg.text ?? "").includes("Host:    prod-1"));
+	assert.ok((msg.text ?? "").includes("Starting relay run"));
 });
 
-Deno.test("notify - buildNotificationMessage error subject uses ERROR + message", () => {
+test("notify - buildNotificationMessage error subject uses ERROR + message", () => {
 	const msg = buildNotificationMessage(baseConfig, {
 		result: null,
 		error: new Error("disk gone"),
 		logText: "boom trace",
 		host: "prod-9",
 	});
-	assertStringIncludes(msg.subject, "ERROR");
-	assertStringIncludes(msg.subject, "disk gone");
-	assertStringIncludes(msg.text ?? "", "boom trace");
+	assert.ok(msg.subject.includes("ERROR"));
+	assert.ok(msg.subject.includes("disk gone"));
+	assert.ok((msg.text ?? "").includes("boom trace"));
 });
 
-Deno.test("notify - buildNotificationMessage failure counts succeeded/failed", () => {
+test("notify - buildNotificationMessage failure counts succeeded/failed", () => {
 	const msg = buildNotificationMessage(baseConfig, {
 		result: makeResult("partial", {
 			filesAlreadyTransferred: 5,
@@ -148,48 +149,47 @@ Deno.test("notify - buildNotificationMessage failure counts succeeded/failed", (
 		logText: "",
 		host: "h",
 	});
-	assertStringIncludes(msg.subject, "PARTIAL");
-	assertStringIncludes(msg.subject, "1 transferred");
-	assertStringIncludes(msg.subject, "1 failed");
-	assertStringIncludes(msg.subject, "5 skipped");
+	assert.ok(msg.subject.includes("PARTIAL"));
+	assert.ok(msg.subject.includes("1 transferred"));
+	assert.ok(msg.subject.includes("1 failed"));
+	assert.ok(msg.subject.includes("5 skipped"));
 });
 
-Deno.test("notify - buildNotificationMessage passes through cc/bcc/replyTo", () => {
+test("notify - buildNotificationMessage passes through cc/bcc/replyTo", () => {
 	const msg = buildNotificationMessage({
 		...baseConfig,
 		replyTo: "me@host",
 		cc: ["a@host", "b@host"],
 		bcc: "c@host",
 	}, okCtx);
-	assertEquals(msg.replyTo, "me@host");
-	assertEquals(msg.cc, ["a@host", "b@host"]);
-	assertEquals(msg.bcc, "c@host");
+	assert.deepStrictEqual(msg.replyTo, "me@host");
+	assert.deepStrictEqual(msg.cc, ["a@host", "b@host"]);
+	assert.deepStrictEqual(msg.bcc, "c@host");
 });
 
-Deno.test("notify - buildNotificationMessage attachLog adds a .log attachment", () => {
+test("notify - buildNotificationMessage attachLog adds a .log attachment", () => {
 	const msg = buildNotificationMessage(
 		{ ...baseConfig, attachLog: true },
 		okCtx,
 	);
-	assertEquals(msg.attachments?.length, 1);
-	assertEquals(msg.attachments?.[0].filename, "file-relay.log");
-	assertStringIncludes(
-		String(msg.attachments?.[0].content ?? ""),
-		"Starting relay run",
+	assert.deepStrictEqual(msg.attachments?.length, 1);
+	assert.deepStrictEqual(msg.attachments?.[0].filename, "file-relay.log");
+	assert.ok(
+		String(msg.attachments?.[0].content ?? "").includes("Starting relay run"),
 	);
 });
 
-Deno.test("notify - buildNotificationMessage with empty log omits the divider", () => {
+test("notify - buildNotificationMessage with empty log omits the divider", () => {
 	const msg = buildNotificationMessage(baseConfig, {
 		result: makeResult("idle"),
 		logText: "   ",
 		host: "h",
 	});
-	assert(!(msg.text ?? "").includes("-".repeat(60)));
+	assert.ok(!(msg.text ?? "").includes("-".repeat(60)));
 	// no attachment when there is no captured output, even if attachLog is on
 	const msg2 = buildNotificationMessage(
 		{ ...baseConfig, attachLog: true },
 		{ result: makeResult("idle"), logText: "   ", host: "h" },
 	);
-	assertEquals(msg2.attachments, undefined);
+	assert.deepStrictEqual(msg2.attachments, undefined);
 });

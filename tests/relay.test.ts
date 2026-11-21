@@ -1,13 +1,15 @@
-import { assertEquals } from "@std/assert";
+import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import { test } from "node:test";
 import { createClog, createNoopClog } from "@marianmeres/clog";
 import { type ClogFn, relay } from "../src/relay.ts";
-import { cleanup, createFile, createTempDir } from "./_helpers.ts";
-import { join } from "@std/path";
+import { cleanup, createFile, createTempDir, serve } from "./_helpers.ts";
+import { join } from "node:path";
 
 // suppress debug output in tests
 createClog.global.debug = false;
 
-Deno.test("relay - full flow: find, transfer, track", async () => {
+test("relay - full flow: find, transfer, track", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -26,37 +28,37 @@ Deno.test("relay - full flow: find, transfer, track", async () => {
 			{ clog: createNoopClog("test") },
 		);
 
-		assertEquals(result.success, true);
-		assertEquals(result.filesFound, 2);
-		assertEquals(result.filesAlreadyTransferred, 0);
-		assertEquals(result.transfers.length, 2);
-		assertEquals(
+		assert.deepStrictEqual(result.success, true);
+		assert.deepStrictEqual(result.filesFound, 2);
+		assert.deepStrictEqual(result.filesAlreadyTransferred, 0);
+		assert.deepStrictEqual(result.transfers.length, 2);
+		assert.deepStrictEqual(
 			result.transfers.every((t) => t.success),
 			true,
 		);
 
 		// verify files exist at destination
-		const d1 = await Deno.readTextFile(
-			join(destDir, "daily/pg-001.sql.gz"),
+		const d1 = await fs.readFile(
+			join(destDir, "daily/pg-001.sql.gz"), "utf8",
 		);
-		assertEquals(d1, "data1");
+		assert.deepStrictEqual(d1, "data1");
 
-		const d2 = await Deno.readTextFile(
-			join(destDir, "weekly/pg-002.sql.gz"),
+		const d2 = await fs.readFile(
+			join(destDir, "weekly/pg-002.sql.gz"), "utf8",
 		);
-		assertEquals(d2, "data2");
+		assert.deepStrictEqual(d2, "data2");
 
 		// verify tracker markers exist
-		const m1 = await Deno.stat(
+		const m1 = await fs.stat(
 			join(trackDir, "daily/pg-001.sql.gz.transferred.json"),
 		);
-		assertEquals(m1.isFile, true);
+		assert.deepStrictEqual(m1.isFile(), true);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - skips already transferred files", async () => {
+test("relay - skips already transferred files", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -81,22 +83,22 @@ Deno.test("relay - skips already transferred files", async () => {
 		const r1 = await relay(config, {
 			clog: createNoopClog("test"),
 		});
-		assertEquals(r1.transfers.length, 1);
-		assertEquals(r1.filesAlreadyTransferred, 0);
+		assert.deepStrictEqual(r1.transfers.length, 1);
+		assert.deepStrictEqual(r1.filesAlreadyTransferred, 0);
 
 		// second run — should skip
 		const r2 = await relay(config, {
 			clog: createNoopClog("test"),
 		});
-		assertEquals(r2.transfers.length, 0);
-		assertEquals(r2.filesAlreadyTransferred, 1);
-		assertEquals(r2.success, true);
+		assert.deepStrictEqual(r2.transfers.length, 0);
+		assert.deepStrictEqual(r2.filesAlreadyTransferred, 1);
+		assert.deepStrictEqual(r2.success, true);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - dry run does not transfer", async () => {
+test("relay - dry run does not transfer", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -114,22 +116,22 @@ Deno.test("relay - dry run does not transfer", async () => {
 			{ dryRun: true, clog: createNoopClog("test") },
 		);
 
-		assertEquals(result.success, true);
-		assertEquals(result.filesFound, 1);
-		assertEquals(result.transfers.length, 0);
+		assert.deepStrictEqual(result.success, true);
+		assert.deepStrictEqual(result.filesFound, 1);
+		assert.deepStrictEqual(result.transfers.length, 0);
 
 		// destination should be empty
 		const entries = [];
-		for await (const e of Deno.readDir(destDir)) {
+		for await (const e of await fs.opendir(destDir)) {
 			entries.push(e);
 		}
-		assertEquals(entries.length, 0);
+		assert.deepStrictEqual(entries.length, 0);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - no files found", async () => {
+test("relay - no files found", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -145,15 +147,15 @@ Deno.test("relay - no files found", async () => {
 			{ clog: createNoopClog("test") },
 		);
 
-		assertEquals(result.success, true);
-		assertEquals(result.filesFound, 0);
-		assertEquals(result.transfers.length, 0);
+		assert.deepStrictEqual(result.success, true);
+		assert.deepStrictEqual(result.filesFound, 0);
+		assert.deepStrictEqual(result.transfers.length, 0);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - preflight catches unreachable destination", async () => {
+test("relay - preflight catches unreachable destination", async () => {
 	const srcDir = await createTempDir();
 	const logDir = await createTempDir();
 	const trackDir = await createTempDir();
@@ -174,16 +176,16 @@ Deno.test("relay - preflight catches unreachable destination", async () => {
 			{ clog: createNoopClog("test") },
 		);
 
-		assertEquals(result.success, false);
-		assertEquals(result.status, "preflight-failed");
+		assert.deepStrictEqual(result.success, false);
+		assert.deepStrictEqual(result.status, "preflight-failed");
 		// preflight short-circuits — no per-file transfer attempts
-		assertEquals(result.transfers.length, 0);
+		assert.deepStrictEqual(result.transfers.length, 0);
 	} finally {
 		await cleanup(srcDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - reports per-file failure when source vanishes", async () => {
+test("relay - reports per-file failure when source vanishes", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -199,7 +201,7 @@ Deno.test("relay - reports per-file failure when source vanishes", async () => {
 		// transfer by using a non-existent source dir for the missing file.
 		// Simplest proxy: make one file path unreadable by setting 0 perms.
 		const unreadable = `${srcDir}/notes.sql.gz`;
-		await Deno.chmod(unreadable, 0o000);
+		await fs.chmod(unreadable, 0o000);
 
 		const result = await relay(
 			{
@@ -212,19 +214,19 @@ Deno.test("relay - reports per-file failure when source vanishes", async () => {
 		);
 
 		// restore perms so cleanup works
-		await Deno.chmod(unreadable, 0o644);
+		await fs.chmod(unreadable, 0o644);
 
-		assertEquals(result.transfers.length, 2);
-		assertEquals(result.status, "partial");
-		assertEquals(result.success, false);
+		assert.deepStrictEqual(result.transfers.length, 2);
+		assert.deepStrictEqual(result.status, "partial");
+		assert.deepStrictEqual(result.success, false);
 		const failed = result.transfers.filter((t) => !t.success);
-		assertEquals(failed.length, 1);
+		assert.deepStrictEqual(failed.length, 1);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - status='ok' on full success, 'idle' when nothing to do", async () => {
+test("relay - status='ok' on full success, 'idle' when nothing to do", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -239,18 +241,18 @@ Deno.test("relay - status='ok' on full success, 'idle' when nothing to do", asyn
 		};
 
 		const r1 = await relay(cfg, { clog: createNoopClog("test") });
-		assertEquals(r1.status, "ok");
-		assertEquals(r1.success, true);
+		assert.deepStrictEqual(r1.status, "ok");
+		assert.deepStrictEqual(r1.success, true);
 
 		const r2 = await relay(cfg, { clog: createNoopClog("test") });
-		assertEquals(r2.status, "idle");
-		assertEquals(r2.success, true);
+		assert.deepStrictEqual(r2.status, "idle");
+		assert.deepStrictEqual(r2.success, true);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - retries transient failures and succeeds", async () => {
+test("relay - retries transient failures and succeeds", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -279,15 +281,15 @@ Deno.test("relay - retries transient failures and succeeds", async () => {
 			},
 			{ clog: createNoopClog("test") },
 		);
-		assertEquals(r.success, true);
-		assertEquals(r.transfers[0].attempts, 1);
+		assert.deepStrictEqual(r.success, true);
+		assert.deepStrictEqual(r.transfers[0].attempts, 1);
 		void createTracker;
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - concurrency transfers multiple files in parallel", async () => {
+test("relay - concurrency transfers multiple files in parallel", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -306,15 +308,15 @@ Deno.test("relay - concurrency transfers multiple files in parallel", async () =
 			},
 			{ clog: createNoopClog("test") },
 		);
-		assertEquals(r.status, "ok");
-		assertEquals(r.transfers.length, 10);
-		assertEquals(r.transfers.every((t) => t.success), true);
+		assert.deepStrictEqual(r.status, "ok");
+		assert.deepStrictEqual(r.transfers.length, 10);
+		assert.deepStrictEqual(r.transfers.every((t) => t.success), true);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - retries a flaky upload and eventually succeeds", async () => {
+test("relay - retries a flaky upload and eventually succeeds", async () => {
 	const srcDir = await createTempDir();
 	const logDir = await createTempDir();
 	const trackDir = await createTempDir();
@@ -324,7 +326,7 @@ Deno.test("relay - retries a flaky upload and eventually succeeds", async () => 
 	const controller = new AbortController();
 	let port = 0;
 	let hits = 0;
-	const server = Deno.serve(
+	const server = serve(
 		{
 			signal: controller.signal,
 			port: 0,
@@ -370,10 +372,10 @@ Deno.test("relay - retries a flaky upload and eventually succeeds", async () => 
 			},
 			{ clog: createNoopClog("test") },
 		);
-		assertEquals(result.status, "ok");
-		assertEquals(result.transfers.length, 1);
-		assertEquals(result.transfers[0].success, true);
-		assertEquals(result.transfers[0].attempts, 3);
+		assert.deepStrictEqual(result.status, "ok");
+		assert.deepStrictEqual(result.transfers.length, 1);
+		assert.deepStrictEqual(result.transfers[0].success, true);
+		assert.deepStrictEqual(result.transfers[0].attempts, 3);
 	} finally {
 		controller.abort();
 		await server.finished.catch(() => {});
@@ -381,7 +383,7 @@ Deno.test("relay - retries a flaky upload and eventually succeeds", async () => 
 	}
 });
 
-Deno.test("relay - writes a failure dump file next to the run log", async () => {
+test("relay - writes a failure dump file next to the run log", async () => {
 	const srcDir = await createTempDir();
 	const logDir = await createTempDir();
 	const trackDir = await createTempDir();
@@ -389,7 +391,7 @@ Deno.test("relay - writes a failure dump file next to the run log", async () => 
 	const html = `<html><body>${"boom ".repeat(500)}</body></html>`;
 	const controller = new AbortController();
 	let port = 0;
-	const server = Deno.serve(
+	const server = serve(
 		{
 			signal: controller.signal,
 			port: 0,
@@ -429,28 +431,28 @@ Deno.test("relay - writes a failure dump file next to the run log", async () => 
 			},
 			{ clog: capture },
 		);
-		assertEquals(result.status, "failed");
+		assert.deepStrictEqual(result.status, "failed");
 
 		const entries: string[] = [];
-		for await (const e of Deno.readDir(logDir)) entries.push(e.name);
+		for await (const e of await fs.opendir(logDir)) entries.push(e.name);
 
 		const dumps = entries.filter((n) => n.includes("-failure-"));
-		assertEquals(dumps.length, 1);
-		assertEquals(dumps[0].endsWith("-daily-backup.sql.gz.log"), true);
+		assert.deepStrictEqual(dumps.length, 1);
+		assert.deepStrictEqual(dumps[0].endsWith("-daily-backup.sql.gz.log"), true);
 
-		const dump = await Deno.readTextFile(join(logDir, dumps[0]));
-		assertEquals(dump.includes(html), true);
-		assertEquals(dump.includes("Adapter:     static-upload-server"), true);
-		assertEquals(dump.includes("daily/backup.sql.gz"), true);
+		const dump = await fs.readFile(join(logDir, dumps[0]), "utf8");
+		assert.deepStrictEqual(dump.includes(html), true);
+		assert.deepStrictEqual(dump.includes("Adapter:     static-upload-server"), true);
+		assert.deepStrictEqual(dump.includes("daily/backup.sql.gz"), true);
 
 		// the run log points at the dump instead of inlining the HTML
 		const logText = logged.join("\n");
-		assertEquals(
+		assert.deepStrictEqual(
 			logText.includes(`Full error detail: ${join(logDir, dumps[0])}`),
 			true,
 		);
-		assertEquals(logText.includes("FAILED after 1 attempt(s)"), true);
-		assertEquals(logText.includes(html), false);
+		assert.deepStrictEqual(logText.includes("FAILED after 1 attempt(s)"), true);
+		assert.deepStrictEqual(logText.includes(html), false);
 	} finally {
 		controller.abort();
 		await server.finished.catch(() => {});
@@ -458,7 +460,7 @@ Deno.test("relay - writes a failure dump file next to the run log", async () => 
 	}
 });
 
-Deno.test("relay - concurrent runs do not interfere with each other's logs", async () => {
+test("relay - concurrent runs do not interfere with each other's logs", async () => {
 	// two relay() calls in parallel on different source/track dirs — the
 	// log hook must not be shared in a way that leaks lines across runs
 	async function runOne() {
@@ -484,8 +486,8 @@ Deno.test("relay - concurrent runs do not interfere with each other's logs", asy
 	}
 	const [a, b] = await Promise.all([runOne(), runOne()]);
 	try {
-		assertEquals(a.r.status, "ok");
-		assertEquals(b.r.status, "ok");
+		assert.deepStrictEqual(a.r.status, "ok");
+		assert.deepStrictEqual(b.r.status, "ok");
 	} finally {
 		await cleanup(
 			a.logDir,
@@ -500,7 +502,7 @@ Deno.test("relay - concurrent runs do not interfere with each other's logs", asy
 	}
 });
 
-Deno.test("relay - abort signal stops mid-run", async () => {
+test("relay - abort signal stops mid-run", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -524,14 +526,14 @@ Deno.test("relay - abort signal stops mid-run", async () => {
 		);
 		// Status should be "aborted" (transfers may or may not have completed
 		// before the signal propagated)
-		assertEquals(r.status, "aborted");
-		assertEquals(r.success, false);
+		assert.deepStrictEqual(r.status, "aborted");
+		assert.deepStrictEqual(r.success, false);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}
 });
 
-Deno.test("relay - result has correct timing info", async () => {
+test("relay - result has correct timing info", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	const logDir = await createTempDir();
@@ -549,10 +551,10 @@ Deno.test("relay - result has correct timing info", async () => {
 			{ clog: createNoopClog("test") },
 		);
 
-		assertEquals(typeof result.startedAt, "string");
-		assertEquals(typeof result.finishedAt, "string");
-		assertEquals(typeof result.durationMs, "number");
-		assertEquals(result.durationMs >= 0, true);
+		assert.deepStrictEqual(typeof result.startedAt, "string");
+		assert.deepStrictEqual(typeof result.finishedAt, "string");
+		assert.deepStrictEqual(typeof result.durationMs, "number");
+		assert.deepStrictEqual(result.durationMs >= 0, true);
 	} finally {
 		await cleanup(srcDir, destDir, logDir, trackDir);
 	}

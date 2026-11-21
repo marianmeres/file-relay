@@ -1,7 +1,9 @@
-import { assertEquals } from "@std/assert";
+import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import { test } from "node:test";
 import { createFilesystemAdapter } from "../../src/adapters/filesystem.ts";
 import { cleanup, createFile, createTempDir } from "../_helpers.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 import type { FileInfo } from "../../src/file-finder.ts";
 
 function makeFileInfo(
@@ -18,7 +20,7 @@ function makeFileInfo(
 	};
 }
 
-Deno.test("filesystem adapter - copies file to destination", async () => {
+test("filesystem adapter - copies file to destination", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	try {
@@ -38,20 +40,20 @@ Deno.test("filesystem adapter - copies file to destination", async () => {
 
 		const result = await adapter.transfer(fileInfo);
 
-		assertEquals(result.success, true);
-		assertEquals(result.bytesTransferred, fileInfo.size);
+		assert.deepStrictEqual(result.success, true);
+		assert.deepStrictEqual(result.bytesTransferred, fileInfo.size);
 
 		// verify file exists at destination
-		const destContent = await Deno.readTextFile(
-			join(destDir, "backup.sql.gz"),
+		const destContent = await fs.readFile(
+			join(destDir, "backup.sql.gz"), "utf8",
 		);
-		assertEquals(destContent, content);
+		assert.deepStrictEqual(destContent, content);
 	} finally {
 		await cleanup(srcDir, destDir);
 	}
 });
 
-Deno.test("filesystem adapter - creates subdirectories", async () => {
+test("filesystem adapter - creates subdirectories", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	try {
@@ -71,18 +73,18 @@ Deno.test("filesystem adapter - creates subdirectories", async () => {
 
 		const result = await adapter.transfer(fileInfo);
 
-		assertEquals(result.success, true);
+		assert.deepStrictEqual(result.success, true);
 
-		const destContent = await Deno.readTextFile(
-			join(destDir, "daily/pg-20260318.sql.gz"),
+		const destContent = await fs.readFile(
+			join(destDir, "daily/pg-20260318.sql.gz"), "utf8",
 		);
-		assertEquals(destContent, content);
+		assert.deepStrictEqual(destContent, content);
 	} finally {
 		await cleanup(srcDir, destDir);
 	}
 });
 
-Deno.test("filesystem adapter - reports error for missing source", async () => {
+test("filesystem adapter - reports error for missing source", async () => {
 	const destDir = await createTempDir();
 	try {
 		const adapter = createFilesystemAdapter({
@@ -98,14 +100,14 @@ Deno.test("filesystem adapter - reports error for missing source", async () => {
 
 		const result = await adapter.transfer(fileInfo);
 
-		assertEquals(result.success, false);
-		assertEquals(typeof result.error, "string");
+		assert.deepStrictEqual(result.success, false);
+		assert.deepStrictEqual(typeof result.error, "string");
 	} finally {
 		await cleanup(destDir);
 	}
 });
 
-Deno.test("filesystem adapter - sha256 verify detects corruption", async () => {
+test("filesystem adapter - sha256 verify detects corruption", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	try {
@@ -125,7 +127,7 @@ Deno.test("filesystem adapter - sha256 verify detects corruption", async () => {
 		);
 
 		const result = await adapter.transfer(fileInfo);
-		assertEquals(result.success, true);
+		assert.deepStrictEqual(result.success, true);
 
 		// Corrupt the destination while keeping the same byte length, then
 		// call sha256OfFile directly via a second transfer with modified src.
@@ -138,7 +140,7 @@ Deno.test("filesystem adapter - sha256 verify detects corruption", async () => {
 	}
 });
 
-Deno.test("filesystem adapter - check() reports writable destination", async () => {
+test("filesystem adapter - check() reports writable destination", async () => {
 	const destDir = await createTempDir();
 	try {
 		const adapter = createFilesystemAdapter({
@@ -146,23 +148,23 @@ Deno.test("filesystem adapter - check() reports writable destination", async () 
 			dir: destDir,
 		});
 		const check = await adapter.check!();
-		assertEquals(check.ok, true);
+		assert.deepStrictEqual(check.ok, true);
 	} finally {
 		await cleanup(destDir);
 	}
 });
 
-Deno.test("filesystem adapter - check() reports unwritable destination", async () => {
+test("filesystem adapter - check() reports unwritable destination", async () => {
 	const adapter = createFilesystemAdapter({
 		adapter: "filesystem",
 		dir: "/nonexistent/cannot/create/here",
 	});
 	const check = await adapter.check!();
-	assertEquals(check.ok, false);
-	assertEquals(typeof check.error, "string");
+	assert.deepStrictEqual(check.ok, false);
+	assert.deepStrictEqual(typeof check.error, "string");
 });
 
-Deno.test("filesystem adapter - transfer honors abort signal", async () => {
+test("filesystem adapter - transfer honors abort signal", async () => {
 	const srcDir = await createTempDir();
 	const destDir = await createTempDir();
 	try {
@@ -178,16 +180,16 @@ Deno.test("filesystem adapter - transfer honors abort signal", async () => {
 		const result = await adapter.transfer(fileInfo, {
 			signal: controller.signal,
 		});
-		assertEquals(result.success, false);
+		assert.deepStrictEqual(result.success, false);
 	} finally {
 		await cleanup(srcDir, destDir);
 	}
 });
 
-Deno.test("filesystem adapter - name is 'filesystem'", () => {
+test("filesystem adapter - name is 'filesystem'", () => {
 	const adapter = createFilesystemAdapter({
 		adapter: "filesystem",
 		dir: "/tmp",
 	});
-	assertEquals(adapter.name, "filesystem");
+	assert.deepStrictEqual(adapter.name, "filesystem");
 });

@@ -1,13 +1,15 @@
-import { assertEquals } from "@std/assert";
+import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import { test } from "node:test";
 import { createTracker } from "../src/tracker.ts";
 import { cleanup, createTempDir } from "./_helpers.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 
-Deno.test("tracker - isTransferred returns false for untracked file", async () => {
+test("tracker - isTransferred returns false for untracked file", async () => {
 	const dir = await createTempDir();
 	try {
 		const tracker = createTracker(dir);
-		assertEquals(
+		assert.deepStrictEqual(
 			await tracker.isTransferred("daily/backup.sql.gz"),
 			false,
 		);
@@ -16,7 +18,7 @@ Deno.test("tracker - isTransferred returns false for untracked file", async () =
 	}
 });
 
-Deno.test("tracker - markTransferred creates marker file", async () => {
+test("tracker - markTransferred creates marker file", async () => {
 	const dir = await createTempDir();
 	try {
 		const tracker = createTracker(dir);
@@ -32,27 +34,27 @@ Deno.test("tracker - markTransferred creates marker file", async () => {
 			dir,
 			"daily/backup.sql.gz.transferred.json",
 		);
-		const stat = await Deno.stat(markerPath);
-		assertEquals(stat.isFile, true);
+		const stat = await fs.stat(markerPath);
+		assert.deepStrictEqual(stat.isFile(), true);
 
 		// verify content
 		const content = JSON.parse(
-			await Deno.readTextFile(markerPath),
+			await fs.readFile(markerPath, "utf8"),
 		);
-		assertEquals(content.sourcePath, "/data/backups/daily/backup.sql.gz");
-		assertEquals(content.sourceSize, 1024);
+		assert.deepStrictEqual(content.sourcePath, "/data/backups/daily/backup.sql.gz");
+		assert.deepStrictEqual(content.sourceSize, 1024);
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("tracker - isTransferred returns true after markTransferred", async () => {
+test("tracker - isTransferred returns true after markTransferred", async () => {
 	const dir = await createTempDir();
 	try {
 		const tracker = createTracker(dir);
 		const rel = "weekly/pg-202612.sql.gz";
 
-		assertEquals(await tracker.isTransferred(rel), false);
+		assert.deepStrictEqual(await tracker.isTransferred(rel), false);
 
 		await tracker.markTransferred(rel, {
 			transferredAt: new Date().toISOString(),
@@ -61,13 +63,13 @@ Deno.test("tracker - isTransferred returns true after markTransferred", async ()
 			destinationInfo: "test",
 		});
 
-		assertEquals(await tracker.isTransferred(rel), true);
+		assert.deepStrictEqual(await tracker.isTransferred(rel), true);
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("tracker - creates subdirectory structure automatically", async () => {
+test("tracker - creates subdirectory structure automatically", async () => {
 	const dir = await createTempDir();
 	try {
 		const tracker = createTracker(dir);
@@ -81,14 +83,14 @@ Deno.test("tracker - creates subdirectory structure automatically", async () => 
 		});
 
 		const marker = join(dir, "a/b/c/file.gz.transferred.json");
-		const stat = await Deno.stat(marker);
-		assertEquals(stat.isFile, true);
+		const stat = await fs.stat(marker);
+		assert.deepStrictEqual(stat.isFile(), true);
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("tracker - sweepTmp removes stale .tmp markers", async () => {
+test("tracker - sweepTmp removes stale .tmp markers", async () => {
 	const dir = await createTempDir();
 	try {
 		const tracker = createTracker(dir);
@@ -102,47 +104,46 @@ Deno.test("tracker - sweepTmp removes stale .tmp markers", async () => {
 		});
 
 		// plant a stale .tmp marker
-		const { ensureDir } = await import("@std/fs");
-		await ensureDir(join(dir, "stale"));
-		await Deno.writeTextFile(
+		await fs.mkdir(join(dir, "stale"), { recursive: true });
+		await fs.writeFile(
 			join(dir, "stale/file.gz.transferred.json.tmp"),
 			"{}",
 		);
-		await Deno.writeTextFile(
+		await fs.writeFile(
 			join(dir, "keep/file.gz.transferred.json.tmp"),
 			"{}",
 		);
 
 		const removed = await tracker.sweepTmp();
-		assertEquals(removed, 2);
+		assert.deepStrictEqual(removed, 2);
 
 		// valid marker should still exist
-		const stat = await Deno.stat(
+		const stat = await fs.stat(
 			join(dir, "keep/file.gz.transferred.json"),
 		);
-		assertEquals(stat.isFile, true);
+		assert.deepStrictEqual(stat.isFile(), true);
 
 		// stale .tmp files should be gone
 		let stillExists = false;
 		try {
-			await Deno.stat(join(dir, "stale/file.gz.transferred.json.tmp"));
+			await fs.stat(join(dir, "stale/file.gz.transferred.json.tmp"));
 			stillExists = true;
 		} catch {
 			// expected
 		}
-		assertEquals(stillExists, false);
+		assert.deepStrictEqual(stillExists, false);
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("tracker - sweepTmp tolerates missing trackDir", async () => {
+test("tracker - sweepTmp tolerates missing trackDir", async () => {
 	const tracker = createTracker("/nonexistent/path/for/sweep");
 	const removed = await tracker.sweepTmp();
-	assertEquals(removed, 0);
+	assert.deepStrictEqual(removed, 0);
 });
 
-Deno.test("tracker - different relative paths tracked independently", async () => {
+test("tracker - different relative paths tracked independently", async () => {
 	const dir = await createTempDir();
 	try {
 		const tracker = createTracker(dir);
@@ -156,15 +157,15 @@ Deno.test("tracker - different relative paths tracked independently", async () =
 		await tracker.markTransferred("daily/file.gz", meta);
 		await tracker.markTransferred("weekly/file.gz", meta);
 
-		assertEquals(
+		assert.deepStrictEqual(
 			await tracker.isTransferred("daily/file.gz"),
 			true,
 		);
-		assertEquals(
+		assert.deepStrictEqual(
 			await tracker.isTransferred("weekly/file.gz"),
 			true,
 		);
-		assertEquals(
+		assert.deepStrictEqual(
 			await tracker.isTransferred("monthly/file.gz"),
 			false,
 		);

@@ -1,12 +1,14 @@
-import { assertEquals } from "@std/assert";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { createStaticUploadServerAdapter } from "../../src/adapters/static-upload-server.ts";
 import {
 	cleanup,
 	createFile,
 	createMockUploadServer,
 	createTempDir,
+	serve,
 } from "../_helpers.ts";
-import { join } from "@std/path";
+import { join } from "node:path";
 import type { FileInfo } from "../../src/file-finder.ts";
 
 function makeFileInfo(
@@ -23,7 +25,7 @@ function makeFileInfo(
 	};
 }
 
-Deno.test("static-upload-server adapter - uploads file successfully", async () => {
+test("static-upload-server adapter - uploads file successfully", async () => {
 	const srcDir = await createTempDir();
 	const token = "test-token-123";
 	const mock = createMockUploadServer(token);
@@ -49,19 +51,19 @@ Deno.test("static-upload-server adapter - uploads file successfully", async () =
 
 		const result = await adapter.transfer(fileInfo);
 
-		assertEquals(result.success, true);
-		assertEquals(result.bytesTransferred, fileInfo.size);
+		assert.deepStrictEqual(result.success, true);
+		assert.deepStrictEqual(result.bytesTransferred, fileInfo.size);
 
 		// verify the mock received the upload
-		assertEquals(mock.uploads.length, 1);
-		assertEquals(mock.uploads[0].filename, "daily/backup.sql.gz");
+		assert.deepStrictEqual(mock.uploads.length, 1);
+		assert.deepStrictEqual(mock.uploads[0].filename, "daily/backup.sql.gz");
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - fails with wrong token", async () => {
+test("static-upload-server adapter - fails with wrong token", async () => {
 	const srcDir = await createTempDir();
 	const mock = createMockUploadServer("correct-token");
 
@@ -79,15 +81,15 @@ Deno.test("static-upload-server adapter - fails with wrong token", async () => {
 		const fileInfo = makeFileInfo(srcDir, "backup.sql.gz", 4);
 		const result = await adapter.transfer(fileInfo);
 
-		assertEquals(result.success, false);
-		assertEquals(result.error?.includes("401"), true);
+		assert.deepStrictEqual(result.success, false);
+		assert.deepStrictEqual(result.error?.includes("401"), true);
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - handles connection error", async () => {
+test("static-upload-server adapter - handles connection error", async () => {
 	const srcDir = await createTempDir();
 	try {
 		await createFile(srcDir, "backup.sql.gz", "data");
@@ -102,23 +104,23 @@ Deno.test("static-upload-server adapter - handles connection error", async () =>
 		const fileInfo = makeFileInfo(srcDir, "backup.sql.gz", 4);
 		const result = await adapter.transfer(fileInfo);
 
-		assertEquals(result.success, false);
-		assertEquals(typeof result.error, "string");
+		assert.deepStrictEqual(result.success, false);
+		assert.deepStrictEqual(typeof result.error, "string");
 	} finally {
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - name is 'static-upload-server'", () => {
+test("static-upload-server adapter - name is 'static-upload-server'", () => {
 	const adapter = createStaticUploadServerAdapter({
 		adapter: "static-upload-server",
 		url: "https://host",
 		token: "t",
 	});
-	assertEquals(adapter.name, "static-upload-server");
+	assert.deepStrictEqual(adapter.name, "static-upload-server");
 });
 
-Deno.test("static-upload-server adapter - uploads large file without buffering", async () => {
+test("static-upload-server adapter - uploads large file without buffering", async () => {
 	const srcDir = await createTempDir();
 	const token = "t";
 	const mock = createMockUploadServer(token);
@@ -140,15 +142,15 @@ Deno.test("static-upload-server adapter - uploads large file without buffering",
 		const fi = makeFileInfo(srcDir, "big.bin", size);
 		const result = await adapter.transfer(fi);
 
-		assertEquals(result.success, true);
-		assertEquals(mock.uploads[0].size, size);
+		assert.deepStrictEqual(result.success, true);
+		assert.deepStrictEqual(mock.uploads[0].size, size);
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - honors external abort signal", async () => {
+test("static-upload-server adapter - honors external abort signal", async () => {
 	const srcDir = await createTempDir();
 	const token = "t";
 	const mock = createMockUploadServer(token);
@@ -167,14 +169,14 @@ Deno.test("static-upload-server adapter - honors external abort signal", async (
 		const result = await adapter.transfer(fi, {
 			signal: controller.signal,
 		});
-		assertEquals(result.success, false);
+		assert.deepStrictEqual(result.success, false);
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - check() reports reachable host", async () => {
+test("static-upload-server adapter - check() reports reachable host", async () => {
 	const mock = createMockUploadServer("t");
 	await new Promise((r) => setTimeout(r, 100));
 	try {
@@ -184,13 +186,13 @@ Deno.test("static-upload-server adapter - check() reports reachable host", async
 			token: "t",
 		});
 		const check = await adapter.check!();
-		assertEquals(check.ok, true);
+		assert.deepStrictEqual(check.ok, true);
 	} finally {
 		mock.close();
 	}
 });
 
-Deno.test("static-upload-server adapter - check() reports unreachable host", async () => {
+test("static-upload-server adapter - check() reports unreachable host", async () => {
 	const adapter = createStaticUploadServerAdapter({
 		adapter: "static-upload-server",
 		url: "http://localhost:1",
@@ -198,14 +200,14 @@ Deno.test("static-upload-server adapter - check() reports unreachable host", asy
 		timeout: 1000,
 	});
 	const check = await adapter.check!();
-	assertEquals(check.ok, false);
+	assert.deepStrictEqual(check.ok, false);
 });
 
 /** Start a server that answers every upload with a fixed error response. */
-function createFailingServer(body: string, status = 500, headers?: HeadersInit) {
+function createFailingServer(body: string, status = 500, headers?: ResponseInit["headers"]) {
 	const controller = new AbortController();
 	let port = 0;
-	const server = Deno.serve(
+	const server = serve(
 		{
 			signal: controller.signal,
 			port: 0,
@@ -230,7 +232,7 @@ function createFailingServer(body: string, status = 500, headers?: HeadersInit) 
 	};
 }
 
-Deno.test("static-upload-server adapter - captures full error body in errorDetail", async () => {
+test("static-upload-server adapter - captures full error body in errorDetail", async () => {
 	const srcDir = await createTempDir();
 	const html = `<html><head><title>500 Internal Server Error</title></head>` +
 		`<body>${"x".repeat(2000)}</body></html>`;
@@ -248,31 +250,31 @@ Deno.test("static-upload-server adapter - captures full error body in errorDetai
 			makeFileInfo(srcDir, "daily/backup.sql.gz", 4),
 		);
 
-		assertEquals(result.success, false);
+		assert.deepStrictEqual(result.success, false);
 
 		// the inline error stays short and single-line — it goes to the run log
-		assertEquals(result.error!.startsWith("HTTP 500: "), true);
-		assertEquals(result.error!.includes("\n"), false);
-		assertEquals(result.error!.length < 400, true);
+		assert.deepStrictEqual(result.error!.startsWith("HTTP 500: "), true);
+		assert.deepStrictEqual(result.error!.includes("\n"), false);
+		assert.deepStrictEqual(result.error!.length < 400, true);
 
 		// ...but nothing is lost: the full body lands in errorDetail
 		const detail = result.errorDetail!;
-		assertEquals(detail.includes(html), true);
-		assertEquals(detail.includes("HTTP 500 Internal Server Error"), true);
-		assertEquals(detail.includes("x-request-id: abc123"), true);
-		assertEquals(
+		assert.deepStrictEqual(detail.includes(html), true);
+		assert.deepStrictEqual(detail.includes("HTTP 500 Internal Server Error"), true);
+		assert.deepStrictEqual(detail.includes("x-request-id: abc123"), true);
+		assert.deepStrictEqual(
 			detail.includes(`PUT ${mock.url}/daily/backup.sql.gz`),
 			true,
 		);
 		// credentials must never reach a dump file
-		assertEquals(detail.toLowerCase().includes("authorization"), false);
+		assert.deepStrictEqual(detail.toLowerCase().includes("authorization"), false);
 	} finally {
 		await mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - short error body is kept inline verbatim", async () => {
+test("static-upload-server adapter - short error body is kept inline verbatim", async () => {
 	const srcDir = await createTempDir();
 	const mock = createFailingServer("Internal Server Error", 500);
 	await new Promise((r) => setTimeout(r, 100));
@@ -287,21 +289,21 @@ Deno.test("static-upload-server adapter - short error body is kept inline verbat
 		const result = await adapter.transfer(
 			makeFileInfo(srcDir, "backup.sql.gz", 4),
 		);
-		assertEquals(result.success, false);
-		assertEquals(result.error, "HTTP 500: Internal Server Error");
-		assertEquals(result.errorDetail!.includes("Mode: put"), true);
-		assertEquals(result.errorDetail!.includes("4 bytes"), true);
+		assert.deepStrictEqual(result.success, false);
+		assert.deepStrictEqual(result.error, "HTTP 500: Internal Server Error");
+		assert.deepStrictEqual(result.errorDetail!.includes("Mode: put"), true);
+		assert.deepStrictEqual(result.errorDetail!.includes("4 bytes"), true);
 	} finally {
 		await mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - names a timeout as a timeout", async () => {
+test("static-upload-server adapter - names a timeout as a timeout", async () => {
 	const srcDir = await createTempDir();
 	const controller = new AbortController();
 	let port = 0;
-	const server = Deno.serve(
+	const server = serve(
 		{
 			signal: controller.signal,
 			port: 0,
@@ -311,8 +313,15 @@ Deno.test("static-upload-server adapter - names a timeout as a timeout", async (
 		},
 		async (req) => {
 			await req.arrayBuffer().catch(() => {});
-			// never answer within the client's timeout
-			await new Promise((r) => setTimeout(r, 5000));
+			// never answer within the client's timeout (and stop waiting once the
+			// client is gone, so no timer outlives the test)
+			await new Promise((r) => {
+				const timer = setTimeout(r, 5000);
+				req.signal.addEventListener("abort", () => {
+					clearTimeout(timer);
+					r(undefined);
+				});
+			});
 			return new Response("too late");
 		},
 	);
@@ -330,10 +339,10 @@ Deno.test("static-upload-server adapter - names a timeout as a timeout", async (
 			makeFileInfo(srcDir, "backup.sql.gz", 4),
 		);
 
-		assertEquals(result.success, false);
-		assertEquals(result.error!.includes("Timed out after 300ms"), true);
-		assertEquals(result.errorDetail!.includes("Timed out: yes"), true);
-		assertEquals(result.errorDetail!.includes("Externally aborted: no"), true);
+		assert.deepStrictEqual(result.success, false);
+		assert.deepStrictEqual(result.error!.includes("Timed out after 300ms"), true);
+		assert.deepStrictEqual(result.errorDetail!.includes("Timed out: yes"), true);
+		assert.deepStrictEqual(result.errorDetail!.includes("Externally aborted: no"), true);
 	} finally {
 		controller.abort();
 		await server.finished.catch(() => {});
@@ -341,7 +350,7 @@ Deno.test("static-upload-server adapter - names a timeout as a timeout", async (
 	}
 });
 
-Deno.test("static-upload-server adapter - PUT mode is the default and streams raw body", async () => {
+test("static-upload-server adapter - PUT mode is the default and streams raw body", async () => {
 	const srcDir = await createTempDir();
 	const token = "t";
 	const mock = createMockUploadServer(token);
@@ -362,22 +371,22 @@ Deno.test("static-upload-server adapter - PUT mode is the default and streams ra
 			makeFileInfo(srcDir, "daily/backup.sql.gz", size),
 		);
 
-		assertEquals(result.success, true);
-		assertEquals(result.bytesTransferred, size);
+		assert.deepStrictEqual(result.success, true);
+		assert.deepStrictEqual(result.bytesTransferred, size);
 		// the relative path became the URL path, and the raw body was the file
-		assertEquals(mock.uploads.length, 1);
-		assertEquals(mock.uploads[0].via, "put");
-		assertEquals(mock.uploads[0].filename, "daily/backup.sql.gz");
-		assertEquals(mock.uploads[0].size, size);
+		assert.deepStrictEqual(mock.uploads.length, 1);
+		assert.deepStrictEqual(mock.uploads[0].via, "put");
+		assert.deepStrictEqual(mock.uploads[0].filename, "daily/backup.sql.gz");
+		assert.deepStrictEqual(mock.uploads[0].size, size);
 		// destination echoes the server's authoritative stored path
-		assertEquals(result.destination, "/test/daily/backup.sql.gz");
+		assert.deepStrictEqual(result.destination, "/test/daily/backup.sql.gz");
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - mode='multipart' still POSTs a form", async () => {
+test("static-upload-server adapter - mode='multipart' still POSTs a form", async () => {
 	const srcDir = await createTempDir();
 	const token = "t";
 	const mock = createMockUploadServer(token);
@@ -395,16 +404,16 @@ Deno.test("static-upload-server adapter - mode='multipart' still POSTs a form", 
 			makeFileInfo(srcDir, "daily/backup.sql.gz", 4),
 		);
 
-		assertEquals(result.success, true);
-		assertEquals(mock.uploads[0].via, "post");
-		assertEquals(mock.uploads[0].filename, "daily/backup.sql.gz");
+		assert.deepStrictEqual(result.success, true);
+		assert.deepStrictEqual(mock.uploads[0].via, "post");
+		assert.deepStrictEqual(mock.uploads[0].filename, "daily/backup.sql.gz");
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - PUT percent-encodes path segments", async () => {
+test("static-upload-server adapter - PUT percent-encodes path segments", async () => {
 	const srcDir = await createTempDir();
 	const token = "t";
 	const mock = createMockUploadServer(token);
@@ -421,17 +430,17 @@ Deno.test("static-upload-server adapter - PUT percent-encodes path segments", as
 			makeFileInfo(srcDir, "daily/my backup #1.sql.gz", 4),
 		);
 
-		assertEquals(result.success, true);
+		assert.deepStrictEqual(result.success, true);
 		// the server decodes back to the original name — a raw "#" would have
 		// been read as a URL fragment and truncated the path
-		assertEquals(mock.uploads[0].filename, "daily/my backup #1.sql.gz");
+		assert.deepStrictEqual(mock.uploads[0].filename, "daily/my backup #1.sql.gz");
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - fails the transfer when stored size != sent size", async () => {
+test("static-upload-server adapter - fails the transfer when stored size != sent size", async () => {
 	const srcDir = await createTempDir();
 	const token = "t";
 	// server accepts, but reports storing fewer bytes than we sent — what a
@@ -451,17 +460,17 @@ Deno.test("static-upload-server adapter - fails the transfer when stored size !=
 		);
 
 		// a 200 is NOT enough — a truncated upload must not be marked transferred
-		assertEquals(result.success, false);
-		assertEquals(result.error, "Size mismatch: sent 4 bytes, server stored 9");
-		assertEquals(result.errorDetail!.includes("Server stored:  9 bytes"), true);
-		assertEquals(result.errorDetail!.includes("Source file is: 4 bytes"), true);
+		assert.deepStrictEqual(result.success, false);
+		assert.deepStrictEqual(result.error, "Size mismatch: sent 4 bytes, server stored 9");
+		assert.deepStrictEqual(result.errorDetail!.includes("Server stored:  9 bytes"), true);
+		assert.deepStrictEqual(result.errorDetail!.includes("Source file is: 4 bytes"), true);
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - explains a 404 from a pre-1.7.0 server", async () => {
+test("static-upload-server adapter - explains a 404 from a pre-1.7.0 server", async () => {
 	const srcDir = await createTempDir();
 	const token = "t";
 	const mock = createMockUploadServer(token, { noPutRoute: true });
@@ -478,23 +487,23 @@ Deno.test("static-upload-server adapter - explains a 404 from a pre-1.7.0 server
 			makeFileInfo(srcDir, "backup.sql.gz", 4),
 		);
 
-		assertEquals(result.success, false);
+		assert.deepStrictEqual(result.success, false);
 		// a bare "HTTP 404: Not found" would read as a typo'd URL
-		assertEquals(result.error!.includes(">= 1.7.0"), true);
-		assertEquals(result.error!.includes(`mode = "multipart"`), true);
+		assert.deepStrictEqual(result.error!.includes(">= 1.7.0"), true);
+		assert.deepStrictEqual(result.error!.includes(`mode = "multipart"`), true);
 	} finally {
 		mock.close();
 		await cleanup(srcDir);
 	}
 });
 
-Deno.test("static-upload-server adapter - accepts non-JSON 2xx response", async () => {
+test("static-upload-server adapter - accepts non-JSON 2xx response", async () => {
 	const srcDir = await createTempDir();
 	const token = "t";
 	// a server that returns 200 with plain text
 	const controller = new AbortController();
 	let port = 0;
-	const server = Deno.serve(
+	const server = serve(
 		{
 			signal: controller.signal,
 			port: 0,
@@ -519,7 +528,7 @@ Deno.test("static-upload-server adapter - accepts non-JSON 2xx response", async 
 		});
 		const fi = makeFileInfo(srcDir, "backup.sql.gz", 4);
 		const result = await adapter.transfer(fi);
-		assertEquals(result.success, true);
+		assert.deepStrictEqual(result.success, true);
 	} finally {
 		controller.abort();
 		await server.finished.catch(() => {});

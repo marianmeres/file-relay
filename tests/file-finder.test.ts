@@ -1,8 +1,10 @@
-import { assertEquals } from "@std/assert";
+import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import { test } from "node:test";
 import { findFiles } from "../src/file-finder.ts";
 import { cleanup, createFile, createTempDir } from "./_helpers.ts";
 
-Deno.test("file-finder - finds files matching glob", async () => {
+test("file-finder - finds files matching glob", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "backup-001.sql.gz", "data1");
@@ -14,8 +16,8 @@ Deno.test("file-finder - finds files matching glob", async () => {
 			glob: "*.sql.gz",
 		});
 
-		assertEquals(files.length, 2);
-		assertEquals(
+		assert.deepStrictEqual(files.length, 2);
+		assert.deepStrictEqual(
 			files.every((f) => f.name.endsWith(".sql.gz")),
 			true,
 		);
@@ -24,7 +26,7 @@ Deno.test("file-finder - finds files matching glob", async () => {
 	}
 });
 
-Deno.test("file-finder - recursively scans subdirectories", async () => {
+test("file-finder - recursively scans subdirectories", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "daily/pg-20260315.sql.gz", "d1");
@@ -37,10 +39,10 @@ Deno.test("file-finder - recursively scans subdirectories", async () => {
 			glob: "**/*.sql.gz",
 		});
 
-		assertEquals(files.length, 4);
+		assert.deepStrictEqual(files.length, 4);
 		// verify relative paths preserve subdirectory structure
 		const relPaths = files.map((f) => f.relativePath).sort();
-		assertEquals(relPaths, [
+		assert.deepStrictEqual(relPaths, [
 			"daily/pg-20260315.sql.gz",
 			"daily/pg-20260316.sql.gz",
 			"monthly/pg-202603.sql.gz",
@@ -51,7 +53,7 @@ Deno.test("file-finder - recursively scans subdirectories", async () => {
 	}
 });
 
-Deno.test("file-finder - sorts by mtime descending", async () => {
+test("file-finder - sorts by mtime descending", async () => {
 	const dir = await createTempDir();
 	try {
 		const now = Date.now();
@@ -76,16 +78,16 @@ Deno.test("file-finder - sorts by mtime descending", async () => {
 
 		const files = await findFiles({ dir, glob: "*.sql.gz" });
 
-		assertEquals(files.length, 3);
-		assertEquals(files[0].name, "newest.sql.gz");
-		assertEquals(files[1].name, "mid.sql.gz");
-		assertEquals(files[2].name, "old.sql.gz");
+		assert.deepStrictEqual(files.length, 3);
+		assert.deepStrictEqual(files[0].name, "newest.sql.gz");
+		assert.deepStrictEqual(files[1].name, "mid.sql.gz");
+		assert.deepStrictEqual(files[2].name, "old.sql.gz");
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - applies exclude patterns", async () => {
+test("file-finder - applies exclude patterns", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "pg-20260318.sql.gz", "real");
@@ -97,14 +99,14 @@ Deno.test("file-finder - applies exclude patterns", async () => {
 			exclude: ["*-latest.sql.gz"],
 		});
 
-		assertEquals(files.length, 1);
-		assertEquals(files[0].name, "pg-20260318.sql.gz");
+		assert.deepStrictEqual(files.length, 1);
+		assert.deepStrictEqual(files[0].name, "pg-20260318.sql.gz");
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - exclude works on relative paths in subdirs", async () => {
+test("file-finder - exclude works on relative paths in subdirs", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "daily/pg-20260318.sql.gz", "real");
@@ -118,8 +120,8 @@ Deno.test("file-finder - exclude works on relative paths in subdirs", async () =
 			exclude: ["**/*-latest.sql.gz"],
 		});
 
-		assertEquals(files.length, 2);
-		assertEquals(
+		assert.deepStrictEqual(files.length, 2);
+		assert.deepStrictEqual(
 			files.every((f) => !f.name.includes("latest")),
 			true,
 		);
@@ -128,11 +130,11 @@ Deno.test("file-finder - exclude works on relative paths in subdirs", async () =
 	}
 });
 
-Deno.test("file-finder - skips symlinks by default", async () => {
+test("file-finder - skips symlinks by default", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "real.sql.gz", "data");
-		await Deno.symlink(
+		await fs.symlink(
 			`${dir}/real.sql.gz`,
 			`${dir}/link.sql.gz`,
 		);
@@ -143,18 +145,18 @@ Deno.test("file-finder - skips symlinks by default", async () => {
 			followSymlinks: false,
 		});
 
-		assertEquals(files.length, 1);
-		assertEquals(files[0].name, "real.sql.gz");
+		assert.deepStrictEqual(files.length, 1);
+		assert.deepStrictEqual(files[0].name, "real.sql.gz");
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - follows symlinks when configured", async () => {
+test("file-finder - follows symlinks when configured", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "real.sql.gz", "data");
-		await Deno.symlink(
+		await fs.symlink(
 			`${dir}/real.sql.gz`,
 			`${dir}/link.sql.gz`,
 		);
@@ -165,23 +167,23 @@ Deno.test("file-finder - follows symlinks when configured", async () => {
 			followSymlinks: true,
 		});
 
-		assertEquals(files.length, 2);
+		assert.deepStrictEqual(files.length, 2);
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - returns empty array for empty directory", async () => {
+test("file-finder - returns empty array for empty directory", async () => {
 	const dir = await createTempDir();
 	try {
 		const files = await findFiles({ dir, glob: "**/*" });
-		assertEquals(files.length, 0);
+		assert.deepStrictEqual(files.length, 0);
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - returns empty when no files match glob", async () => {
+test("file-finder - returns empty when no files match glob", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "readme.txt", "not a backup");
@@ -191,13 +193,13 @@ Deno.test("file-finder - returns empty when no files match glob", async () => {
 			glob: "*.sql.gz",
 		});
 
-		assertEquals(files.length, 0);
+		assert.deepStrictEqual(files.length, 0);
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - FileInfo has correct properties", async () => {
+test("file-finder - FileInfo has correct properties", async () => {
 	const dir = await createTempDir();
 	try {
 		const content = "hello world";
@@ -208,13 +210,13 @@ Deno.test("file-finder - FileInfo has correct properties", async () => {
 			glob: "**/*.txt",
 		});
 
-		assertEquals(files.length, 1);
+		assert.deepStrictEqual(files.length, 1);
 		const f = files[0];
-		assertEquals(f.name, "file.txt");
-		assertEquals(f.relativePath, "sub/file.txt");
-		assertEquals(f.path, `${dir}/sub/file.txt`);
-		assertEquals(f.size, new TextEncoder().encode(content).length);
-		assertEquals(f.mtime instanceof Date, true);
+		assert.deepStrictEqual(f.name, "file.txt");
+		assert.deepStrictEqual(f.relativePath, "sub/file.txt");
+		assert.deepStrictEqual(f.path, `${dir}/sub/file.txt`);
+		assert.deepStrictEqual(f.size, new TextEncoder().encode(content).length);
+		assert.deepStrictEqual(f.mtime instanceof Date, true);
 	} finally {
 		await cleanup(dir);
 	}
@@ -224,7 +226,7 @@ Deno.test("file-finder - FileInfo has correct properties", async () => {
 // match (regex whitelist) and ignore (regex blacklist)
 // ---------------------------------------------------------------------------
 
-Deno.test("file-finder - match filters to only matching paths", async () => {
+test("file-finder - match filters to only matching paths", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "project-a/backup.sql.gz", "a");
@@ -237,8 +239,8 @@ Deno.test("file-finder - match filters to only matching paths", async () => {
 			match: ["project-a"],
 		});
 
-		assertEquals(files.length, 2);
-		assertEquals(
+		assert.deepStrictEqual(files.length, 2);
+		assert.deepStrictEqual(
 			files.every((f) => f.relativePath.includes("project-a")),
 			true,
 		);
@@ -247,7 +249,7 @@ Deno.test("file-finder - match filters to only matching paths", async () => {
 	}
 });
 
-Deno.test("file-finder - ignore excludes matching paths", async () => {
+test("file-finder - ignore excludes matching paths", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "data.sql.gz", "a");
@@ -260,14 +262,14 @@ Deno.test("file-finder - ignore excludes matching paths", async () => {
 			ignore: ["\\.tmp$"],
 		});
 
-		assertEquals(files.length, 1);
-		assertEquals(files[0].name, "data.sql.gz");
+		assert.deepStrictEqual(files.length, 1);
+		assert.deepStrictEqual(files[0].name, "data.sql.gz");
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - match with multiple patterns uses OR logic", async () => {
+test("file-finder - match with multiple patterns uses OR logic", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "daily/backup.gz", "d");
@@ -280,15 +282,15 @@ Deno.test("file-finder - match with multiple patterns uses OR logic", async () =
 			match: ["^daily", "^weekly"],
 		});
 
-		assertEquals(files.length, 2);
+		assert.deepStrictEqual(files.length, 2);
 		const relPaths = files.map((f) => f.relativePath).sort();
-		assertEquals(relPaths, ["daily/backup.gz", "weekly/backup.gz"]);
+		assert.deepStrictEqual(relPaths, ["daily/backup.gz", "weekly/backup.gz"]);
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - match and ignore combined", async () => {
+test("file-finder - match and ignore combined", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "proj/real.sql.gz", "a");
@@ -302,14 +304,14 @@ Deno.test("file-finder - match and ignore combined", async () => {
 			ignore: ["latest"],
 		});
 
-		assertEquals(files.length, 1);
-		assertEquals(files[0].relativePath, "proj/real.sql.gz");
+		assert.deepStrictEqual(files.length, 1);
+		assert.deepStrictEqual(files[0].relativePath, "proj/real.sql.gz");
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - match and ignore work alongside glob and exclude", async () => {
+test("file-finder - match and ignore work alongside glob and exclude", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "daily/backup.sql.gz", "a");
@@ -322,20 +324,20 @@ Deno.test("file-finder - match and ignore work alongside glob and exclude", asyn
 			match: ["daily"],
 		});
 
-		assertEquals(files.length, 1);
-		assertEquals(files[0].relativePath, "daily/backup.sql.gz");
+		assert.deepStrictEqual(files.length, 1);
+		assert.deepStrictEqual(files[0].relativePath, "daily/backup.sql.gz");
 	} finally {
 		await cleanup(dir);
 	}
 });
 
-Deno.test("file-finder - terminates on symlink cycles when following", async () => {
+test("file-finder - terminates on symlink cycles when following", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "real.sql.gz", "data");
 		// create a cycle: a directory that symlinks to its parent
-		await Deno.mkdir(`${dir}/sub`);
-		await Deno.symlink(dir, `${dir}/sub/loop`);
+		await fs.mkdir(`${dir}/sub`);
+		await fs.symlink(dir, `${dir}/sub/loop`);
 
 		const files = await findFiles({
 			dir,
@@ -346,7 +348,7 @@ Deno.test("file-finder - terminates on symlink cycles when following", async () 
 		// must not hang / stack-overflow; we just care that it returned
 		// and that real.sql.gz is present (possibly multiple times via
 		// the symlink — ok as long as it terminates)
-		assertEquals(
+		assert.deepStrictEqual(
 			files.some((f) => f.relativePath === "real.sql.gz"),
 			true,
 		);
@@ -355,7 +357,7 @@ Deno.test("file-finder - terminates on symlink cycles when following", async () 
 	}
 });
 
-Deno.test("file-finder - empty match array means no regex include filtering", async () => {
+test("file-finder - empty match array means no regex include filtering", async () => {
 	const dir = await createTempDir();
 	try {
 		await createFile(dir, "a.txt", "a");
@@ -367,7 +369,7 @@ Deno.test("file-finder - empty match array means no regex include filtering", as
 			match: [],
 		});
 
-		assertEquals(files.length, 2);
+		assert.deepStrictEqual(files.length, 2);
 	} finally {
 		await cleanup(dir);
 	}
