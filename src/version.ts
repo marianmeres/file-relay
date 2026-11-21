@@ -11,4 +11,4 @@
  */
 
 /** The package version. */
-export const VERSION: string = "1.7.0";
+export const VERSION: string = "1.8.0";
