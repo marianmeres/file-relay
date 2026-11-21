@@ -1,6 +1,6 @@
 {
   "name": "@marianmeres/file-relay",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "CLI and library that relays local files (e.g. database dumps) to a remote destination, by HTTP upload or filesystem copy, with glob/regex filtering, marker-file deduplication, retries and optional email notification. Built for cron-driven offsite backups.",
   "license": "MIT",
   "author": "Marian Meres",
